@@ -1,8 +1,8 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import './chat.css';
 
-type Tool = {id: string; name: string; description: string; placeholder: string};
-type Message = {id: number; role: 'user' | 'assistant'; content: string};
+type PageSession = {id: string; title: string; url: string};
+type Message = {id: number; role: 'user' | 'assistant'; content: string; browser_url?: string};
 type ChatSummary = {id: number; title: string; status: 'ready' | 'generating' | 'failed'; error: string};
 type Conversation = ChatSummary & {messages: Message[]};
 type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
@@ -11,8 +11,8 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
   const [history, setHistory] = useState<ChatSummary[]>([]);
   const [id, setId] = useState<number | null>(null);
   const [chat, setChat] = useState<Conversation | null>(null);
-  const [tools, setTools] = useState<Tool[]>([]);
-  const [toolId, setToolId] = useState('');
+  const [pages, setPages] = useState<PageSession[]>([]);
+  const [pageId, setPageId] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -21,7 +21,6 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
   const composer = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const current = chat?.id === id ? chat : null;
-  const tool = tools.find(item => item.id === toolId);
   const pending = current?.status === 'generating';
   const awaitingHistory = id !== null && !current;
   const lastUserMessage = current?.messages.slice().reverse().find(message => message.role === 'user');
@@ -29,8 +28,8 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
 
   useEffect(() => {
     let active = true;
-    Promise.all([api<Tool[]>('/chat-tools'), api<ChatSummary[]>('/chats')])
-      .then(([available, list]) => { if (active) { setTools(available); setHistory(list); } })
+    Promise.all([api<PageSession[]>('/browser/sessions'), api<ChatSummary[]>('/chats')])
+      .then(([available, list]) => { if (active) { setPages(available); setHistory(list); } })
       .catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
   }, [api]);
@@ -62,7 +61,7 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
     requestVersion.current += 1;
     setId(next);
     setInput('');
-    setToolId('');
+    setPageId('');
     setError('');
     setSending(false);
     if (next === null) setChat(null);
@@ -76,9 +75,10 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
     setError('');
     try {
       const path = id === null ? '/chats' : '/chats/' + id + '/messages';
-      const saved = await api<{id: number}>(path, 'POST', {content: input, tool: toolId || null});
+      const saved = await api<{id: number}>(path, 'POST', {content: input, browser_session: pageId || null});
       if (version === requestVersion.current) {
         setInput('');
+        setPageId('');
         setId(saved.id);
       }
     } catch (err) {
@@ -117,12 +117,13 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
       <div className="chat-transcript" aria-live="polite">
         {!current && !awaitingHistory && <div className="chat-empty">
           <h2>What can I help with?</h2>
-          <p>Ask a question, think through an idea, or use a built-in tool.</p>
+          <p>Ask a question, work through an idea, or discuss a page you opened in Browser.</p>
         </div>}
         {awaitingHistory && <p className="chat-status">Loading conversation…</p>}
         {current?.messages.map(message => <article className={`chat-message ${message.role}`} key={message.id}>
           <strong>{message.role === 'user' ? 'You' : 'Open Agent'}</strong>
           <div className="chat-text">{message.content}</div>
+          {message.browser_url && <p className="chat-status">Browser context · {message.browser_url}</p>}
           {message.role === 'assistant' && <button type="button" className="text-button" onClick={async () => {
             try {
               await navigator.clipboard.writeText(message.content);
@@ -141,18 +142,18 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
       </div>
       {error && <p role="alert" className="error chat-error">{error}</p>}
       <form className="chat-compose" onSubmit={submit}>
-        <label htmlFor="chat-input">{tool?.name || 'Message'}</label>
+        <label htmlFor="chat-input">Message</label>
         <textarea id="chat-input" ref={composer} value={input} rows={3} maxLength={12000}
-          placeholder={tool?.placeholder || 'Message Open Agent…'} onChange={event => setInput(event.target.value)} onKeyDown={handleKey} />
+          placeholder="Message Open Agent…" onChange={event => setInput(event.target.value)} onKeyDown={handleKey} />
         <div className="chat-actions">
-          <label className="chat-tool-label" htmlFor="chat-tool">Tool
-            <select id="chat-tool" value={toolId} onChange={event => setToolId(event.target.value)}>
+          {pages.length > 0 && <label className="chat-tool-label" htmlFor="chat-page">Attach browser context
+            <select id="chat-page" value={pageId} onChange={event => setPageId(event.target.value)}>
               <option value="">None</option>
-              {tools.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              {pages.map(item => <option key={item.id} value={item.id}>{item.title || item.url}</option>)}
             </select>
-          </label>
+          </label>}
           <button className="primary" disabled={!input.trim() || pending || sending || awaitingHistory}>
-            {tool ? 'Run tool' : 'Send'}
+            Send
           </button>
         </div>
       </form>

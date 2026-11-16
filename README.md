@@ -17,10 +17,24 @@ Open Agent is a local chat and coding assistant for an OpenAI-compatible model s
 
 3. Open `http://127.0.0.1:8765` in your browser. Leave the terminal open while using the app. Stop it with Ctrl+C.
 4. In **Settings**, check the connection and model name. The app discovers the first available GPT-OSS model from `http://127.0.0.1:11434/v1` by default. Another local OpenAI-compatible endpoint can be configured there. The model must support chat completions and follow the agent's JSON instructions; a model is never downloaded automatically.
-5. Start in **Chat**. Choose Calculator, Format JSON, or Text statistics under **Tool** to run a local utility even when the model is offline. Conversations are saved and can be reopened.
+5. Start in **Chat** for a regular conversation and use **Workspace** for project work. Conversations are saved and can be reopened.
 6. In **Workspace**, enter an existing project directory and your task. Open **Approvals** to review each proposed edit, command, or download. Give the agent clarifications from the task view when it is paused or blocked.
 
 For development, run `npm --prefix frontend run dev` in a separate terminal; the Vite server proxies `/api` to the backend. Use the production URL above for ordinary use. Run tests with `python -m pytest -q`.
+
+## Engineering workflow
+
+Select a project in **Workspace**. Ask the agent to locate the code, reproduce the failure, propose a targeted edit, and rerun the relevant check. It can discover pytest, unittest, and existing npm test, lint, typecheck, or build scripts in a directory within the project. Named checks show the approved executable and arguments, including npm pre/post scripts when present. Results contain an exit code, elapsed time, and captured output. Python checks use the interpreter running Open Agent. Execute checks only in projects you trust because test and build scripts run project code.
+
+Open **Browser** to inspect a local development page such as `http://127.0.0.1:3000` or a public HTTPS page. The preview includes a screenshot, an accessibility outline, and page errors and failed requests. Click or scroll the preview, activate an exact named control, or fill a labelled field with test data.
+
+Install the browser once with `python -m playwright install chromium --only-shell` using the app's Python environment. On Linux, install the Chromium system dependencies with `python -m playwright install-deps chromium`. To use installed Google Chrome or Microsoft Edge instead, set `OPEN_AGENT_BROWSER_CHANNEL` to `chrome` or `msedge` before launching Open Agent.
+
+To verify a behavior from a coding task, include the URL and expected result in your request. Opening the URL and clicking or filling controls each require approval. The agent can cite a deterministic assertion for an exact accessible name and role in its task review. Select the task's browser session in **Browser** to inspect its screenshot and diagnostics. Sessions expire after 20 minutes without activity and close when Open Agent stops.
+
+In **Chat**, select **Attach browser context** to discuss the current page with the local model. The selected accessibility outline and recent errors are saved with that message. Chat attachments read a captured preview and do not navigate or interact with the page.
+
+The integrated browser is designed for development previews and public reference pages. It uses fresh Chromium contexts, GET/HEAD requests on the selected origin, and a fixed, validated address for each session. Enter the final URL for redirects. Cross-origin assets, login sessions, form submissions, downloads, and WebSockets are outside this preview mode. Use explicit loopback URLs for local apps. Open Agent and its model endpoint are excluded on their default ports.
 
 ## How it works and current limits
 
@@ -34,6 +48,6 @@ For development, run `npm --prefix frontend run dev` in a separate terminal; the
 
 ## Development and contributions
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch workflow and checks. The optional `python tests/live_smoke.py` run exercises an isolated task against your configured local model. Its test harness approves only the expected fixture write.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch workflow and checks. Set `OPEN_AGENT_TEST_BROWSER=1` to run the local browser fixture alongside the regular test suite. The optional `python tests/live_smoke.py` run exercises an isolated task against your configured local model. Its test harness approves only the expected fixture write.
 
 Open Agent is distributed under the [MIT license](LICENSE).

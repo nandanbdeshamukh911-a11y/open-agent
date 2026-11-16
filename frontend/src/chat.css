@@ -13,6 +13,7 @@
 .chat-compose label {color:#53665b;}
 .chat-compose textarea {min-height:78px;}
 .chat-actions {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;}
+.chat-actions>.primary {margin-left:auto;}
 .chat-tool-label {display:flex;align-items:center;gap:9px;}
 .chat-tool-label select {font:inherit;letter-spacing:0;border:1px solid #dce5db;background:#fff;color:#25362d;padding:7px;border-radius:6px;}
 .chat-message {padding:14px 16px;border:1px solid #e4ebe3;border-radius:11px;max-width:90%;min-width:0;}

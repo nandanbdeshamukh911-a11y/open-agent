@@ -36,6 +36,9 @@ def init():
         columns = {row['name'] for row in db.execute('PRAGMA table_info(tasks)').fetchall()}
         if 'draft' not in columns:
             db.execute("ALTER TABLE tasks ADD COLUMN draft TEXT NOT NULL DEFAULT ''")
+        message_columns = {row['name'] for row in db.execute('PRAGMA table_info(chat_messages)')}
+        if 'browser_context' not in message_columns:
+            db.execute('ALTER TABLE chat_messages ADD COLUMN browser_context TEXT')
         # An operation interrupted mid-flight cannot safely be replayed automatically.
         db.execute("UPDATE approvals SET status='interrupted', result='The app stopped during this action. Inspect the workspace before retrying.' WHERE status='executing'")
         db.execute("UPDATE tasks SET status='paused' WHERE status='running'")

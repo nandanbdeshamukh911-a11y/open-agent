@@ -1,0 +1,18 @@
+.browser-panel {display:grid;gap:14px;}
+.browser-bar {display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px;}
+.browser-bar input {margin:0;}
+.browser-controls,.browser-footer {display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;}
+.browser-panel select {font:inherit;max-width:100%;border:1px solid #dce5db;background:#fff;border-radius:6px;padding:7px;color:#26382d;}
+.browser-inspector select {display:block;margin-top:8px;}
+.browser-inspector form {padding-top:12px;margin-top:12px;border-top:1px solid #e7ebe5;}
+.browser-content {display:grid;grid-template-columns:minmax(0,2.2fr) minmax(220px,1fr);align-items:start;gap:14px;}
+.browser-view,.browser-inspector {min-width:0;overflow:hidden;}
+.browser-location,.browser-footer,.browser-inspector {padding:14px;}
+.browser-location strong,.browser-location span {display:block;overflow-wrap:anywhere;}
+.browser-location span,.browser-footer span {font-size:12px;color:#506b59;margin-top:4px;}
+.browser-view img {display:block;width:100%;height:auto;background:#f4f6f3;border-block:1px solid #e7ebe5;}
+.browser-view img.interactive {cursor:crosshair;}
+.browser-inspector h2 {font-size:17px;margin-bottom:10px;}
+.browser-inspector pre {max-height:270px;}
+.browser-inspector form button {margin-top:10px;}
+@media(max-width:1100px) {.browser-content {grid-template-columns:1fr;}}

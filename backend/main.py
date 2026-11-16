@@ -9,11 +9,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import agent, chat, store, tools
+from . import agent, browser_api, chat, store, tools
 
 store.init()
-app = FastAPI(title='Open Agent', docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title='Open Agent', docs_url=None, redoc_url=None, openapi_url=None, lifespan=browser_api.lifespan)
 app.include_router(chat.router)
+app.include_router(browser_api.router)
 
 @app.middleware('http')
 async def local_only(request: Request, call_next):

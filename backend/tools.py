@@ -9,7 +9,7 @@ import stat
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from . import store
+from . import checks, store
 
 MAX_OUTPUT = 30000
 MAX_FILE_BYTES = 2_000_000
@@ -17,6 +17,8 @@ PROJECT_CATALOG = [
     {'name': 'Read and search files', 'description': 'Read selected lines and find exact text in the project.'},
     {'name': 'Git status and diff', 'description': 'Review staged and unstaged changes using fixed Git commands with approval.'},
     {'name': 'Targeted edit', 'description': 'Replace an exact snippet after approval. Reject the edit if the file changed since review.'},
+    {'name': 'Project checks', 'description': 'Discover and run test, lint, typecheck, and build scripts with approval. Capture exit codes and diagnostics.'},
+    {'name': 'Browser preview', 'description': 'Inspect a local site or public HTTPS page with screenshots, accessible controls, and console errors.'},
 ]
 
 def remove_readonly(func, path, _error):
@@ -111,6 +113,10 @@ def git_inspect(action, args, project):
 
 
 def run(action, args, project=None):
+    if action == 'project_checks':
+        return json.dumps(checks.discover(workspace_path(project, args.get('path', '.'))), indent=2)
+    if action == 'run_check':
+        return checks.run_check(workspace_path(project, args['path']), args)
     if action == 'read_file':
         p = workspace_path(project, args['path'])
         start, end = args.get('line_start', 1), args.get('line_end')
