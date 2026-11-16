@@ -46,3 +46,23 @@ def test_npm_lifecycle_changes_invalidate_approval(tmp_path, monkeypatch):
     manifest.write_text(json.dumps({'scripts':{'test':'echo test','pretest':'echo changed'}}))
     with pytest.raises(ValueError, match='changed since'):
         checks.run_check(tmp_path, approval)
+
+
+def test_review_repairs_a_bad_citation_without_repeating_a_tool(app, tmp_path, monkeypatch):
+    client, agent, store = app
+    task_id = store.execute(
+        "INSERT INTO tasks(request, project, status, phase, requirements) VALUES(?,?,'paused','review',?)",
+        ('Verify the page', str(tmp_path), json.dumps(['Open the site'])),
+    )
+    evidence = 'Browser opened http://127.0.0.1:3000/\nHTTP status: 200'
+    store.event(task_id, 'tool', {'action':'browser_open','result':evidence})
+    event_id = store.query("SELECT id FROM events WHERE task_id=?", (task_id,), True)['id']
+    replies = iter([
+        {'verdict':'pass','checks':[{'requirement':'Open the site','status':'pass','event_id':event_id,'evidence':'fabricated'}], 'summary':'Opened'},
+        {'verdict':'pass','checks':[{'requirement':'Open the site','status':'pass','event_id':event_id,'evidence':evidence.replace('\n','\\n')}], 'summary':'Opened'},
+        {'verdict':'pass','summary':'The browser opened the site with HTTP 200.'},
+    ])
+    monkeypatch.setattr(agent, 'model_call', lambda _: json.dumps(next(replies)))
+    client.post(f'/api/tasks/{task_id}/resume').raise_for_status()
+    wait_for(lambda: store.query('SELECT status FROM tasks WHERE id=?', (task_id,), True)['status'] == 'completed')
+    assert not store.query('SELECT id FROM approvals WHERE task_id=?', (task_id,))

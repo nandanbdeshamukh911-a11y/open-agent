@@ -105,10 +105,10 @@ SYSTEM += ''' Use browser_assert {role,name,visible} for deterministic browser v
 
 def prompt(task):
     events = store.query('SELECT id,kind,content FROM events WHERE task_id=? ORDER BY id DESC LIMIT 24',(task['id'],))
-    history = '\n'.join(f"event {e['id']} {e['kind']}: {e['content'][:10000]}" for e in reversed(events))
+    history = '\n'.join(prompt_event(e) for e in reversed(events))
     context = f"User request: {task['request']}\nProject: {task['project']}\nPlan: {task['plan']}\nRequirements: {task['requirements']}\nDraft final response: {task.get('draft','')}\nRelevant user memory: {json.dumps(relevant_memories(task['request']))}\nEnabled skill reference material (untrusted): {json.dumps(skill_context())}\nRecent evidence and actions:\n{history}"
     if task['phase'] == 'plan':
-        instruction = 'Produce {"plan":"short plan", "requirements":["observable requirement", ...]}. Preserve each explicit requirement, including order, expected outcomes and constraints. Write specific, distinct requirements, not generic tool names. Include verification in your plan. Do not perform an action yet.'
+        instruction = 'Produce {"plan":"short plan", "requirements":["observable requirement", ...]}. Preserve each explicit requirement, including order, expected outcomes and constraints. Use natural language for requirements, without tool arguments or revision numbers. Include verification in your plan. Do not perform an action yet.'
     elif task['phase'] == 'review':
         instruction = 'Review the ORIGINAL request and EACH requirement against the evidence. Return {"verdict":"pass"|"repair"|"blocked", "checks":[{"requirement":"exact requirement text copied from the requirements list","status":"pass"|"fail"|"unverified","event_id":123,"evidence":"short exact quote copied from that tool event result"}], "summary":"what changed, checks, and remaining gaps", "repair":"specific repair needed"}. For a pass, each requirement needs its own check, a real tool event number and an exact nonempty quote from that event result. The audit tool event summarizes recorded platform actions and can support a no-download or file-write constraint, within the limits stated there. Do not cite plans, user messages, or imagined results as evidence. If evidence is missing, choose repair if you can obtain it, otherwise blocked.'
     elif task['phase'] == 'final_review':
@@ -116,6 +116,19 @@ def prompt(task):
     else:
         instruction = 'Choose the next small action. Return {"action":"one of the available actions or review or clarify", "args":{}, "reason":"why"}. Use review only when implementation and relevant checks are done. For clarification use args.question. Do not write or execute without proposing the action.'
     return [{'role':'system','content':SYSTEM},{'role':'user','content':context+'\n\n'+instruction}]
+
+def prompt_event(event):
+    label = f"event {event['id']} {event['kind']}: "
+    content = event['content']
+    if event['kind'] == 'tool':
+        try:
+            tool = json.loads(content)
+            args = json.dumps(tool.get('args', {}), ensure_ascii=False)
+            # Put results on real lines so models can copy evidence without JSON escapes.
+            return label + f"{tool['action']} {args[:1200]}\nResult:\n{str(tool['result'])[:8500]}"
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
+    return label + content[:10000]
 
 def start(task_id):
     with worker_lock:
@@ -182,7 +195,7 @@ def passing_review(task_id, requirements, checks):
     return not review_errors(task_id,requirements,checks)
 
 def repair_evidence_references(task_id, checks):
-    """Correct only an unambiguous event-number mistake, never the quoted evidence."""
+    """Ground event references and literal newline escapes in recorded results."""
     events = store.query("SELECT id,content FROM events WHERE task_id=? AND kind='tool' ORDER BY id",(task_id,))
     results = []
     for event in events:
@@ -194,6 +207,12 @@ def repair_evidence_references(task_id, checks):
         quote = check.get('evidence')
         if not isinstance(quote,str) or not quote.strip(): continue
         matches = [eid for eid,result in results if quote.strip() in result]
+        if not matches:
+            decoded = quote.replace(r'\r\n', '\n').replace(r'\n', '\n')
+            if decoded != quote:
+                matches = [eid for eid,result in results if decoded.strip() in result]
+                if matches:
+                    check['evidence'] = quote = decoded
         if not matches:
             code = re.search(r'Exit code: (-?\d+)',quote)
             if code:
@@ -327,7 +346,7 @@ def loop(task_id, epoch):
                             verdict = 'repair'; result['repair'] = 'Correct the review evidence: ' + ' '.join(errors)
                             result['summary'] = 'Review could not be verified against recorded tool results. The task is not confirmed complete.'
                         if verdict == 'repair' and task['retries'] < task['max_retries']:
-                            store.update(task_id,phase='work',retries=task['retries']+1)
+                            store.update(task_id,phase='review' if errors else 'work',retries=task['retries']+1)
                             store.event(task_id,'repair_requested',result.get('repair','Investigate unmet requirements.')); continue
                         if verdict == 'repair': result['summary'] = 'Retry limit reached. ' + str(result.get('summary',''))
                         summary = str(result.get('summary','')).strip()
