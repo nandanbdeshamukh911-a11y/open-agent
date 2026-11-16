@@ -98,7 +98,7 @@ def test_browser_preview_and_agent_approval_use_separate_sessions(app, site, tmp
 
         def click_reply():
             revision = browser.service.call('state', f'task-{task_id}')['revision']
-            return {'action':'browser_click','args':{'role':'button','name':'Update heading','revision':revision}}
+            return {'action':'browser_click','args':{'role':'button','name':'Update heading','revision':str(revision)}}
 
         def script():
             yield {'plan':'Inspect the site','requirements':['Find the initial heading']}

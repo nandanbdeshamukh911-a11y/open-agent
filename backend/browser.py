@@ -234,7 +234,9 @@ def prepare_action(action, args):
     if action == 'browser_open':
         return {'url': str(parse_address(args.get('url')))}
     revision = args.get('revision')
-    if type(revision) is not int or revision < 1:
+    if isinstance(revision, str) and revision.isascii() and revision.isdecimal() and len(revision) <= 16:
+        revision = int(revision)
+    if type(revision) is not int or not 0 < revision <= 9_007_199_254_740_991:
         raise ValueError('Use the numeric revision from the current browser snapshot.')
     if action == 'browser_click':
         role, name = accessible_target(args, CLICK_ROLES)
