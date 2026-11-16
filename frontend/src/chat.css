@@ -30,5 +30,10 @@ button.chat-history-item[aria-pressed=true] {background:#edf4ed!important;}
 .built-in-tools {margin-bottom:14px;}
 .built-in-tools dt {font-weight:700;margin-top:10px;font-size:13px;}
 .built-in-tools dd {margin:3px 0;color:#52685b;font-size:13px;}
+.approval-project,.edit-preview {margin-top:12px;font-size:13px;overflow-wrap:anywhere;}
+.edit-preview-columns {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;}
+.edit-preview-columns pre {margin:5px 0 8px;}
+.edit-preview-columns > :first-child pre {background:#fff3f1;}
+.edit-preview-columns > :last-child pre {background:#edf6ee;}
 @media(max-width:900px) {.chat-layout {grid-template-columns:1fr;}}
-@media(max-width:550px) {.chat-transcript {padding:15px;} .chat-compose {padding:14px;} .chat-message {max-width:100%;}}
+@media(max-width:550px) {.chat-transcript {padding:15px;} .chat-compose {padding:14px;} .chat-message {max-width:100%;} .edit-preview-columns {grid-template-columns:1fr;}}

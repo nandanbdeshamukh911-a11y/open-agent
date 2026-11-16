@@ -88,14 +88,16 @@ def replace_text(project, args):
 def git_inspect(action, args, project):
     root = workspace_path(project, '.')
     if action == 'git_status':
-        options = ['status', '--porcelain=v1', '--untracked-files=normal', '--ignore-submodules=all']
+        options = ['status', '--porcelain=v1', '--untracked-files=normal', '--ignore-submodules=all', '--', '.']
     else:
         options = ['diff', '--no-ext-diff', '--no-textconv', '--ignore-submodules=all']
         if args.get('staged') is True:
             options.append('--cached')
         options.append('--')
         if args.get('path'):
-            options.append(str(workspace_path(project, args['path']).relative_to(root)))
+            options.append(workspace_path(project, args['path']).relative_to(root).as_posix())
+        else:
+            options.append('.')
     with tempfile.TemporaryFile() as output:
         result = subprocess.run(
             ['git', '--no-pager', '--no-optional-locks', '--literal-pathspecs', '-c', 'core.fsmonitor=false', *options],

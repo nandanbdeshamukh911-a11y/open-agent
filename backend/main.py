@@ -138,7 +138,13 @@ def control(task_id: int, operation: str):
     return {'ok':True}
 
 @app.get('/api/approvals')
-def approvals(): return store.query("SELECT * FROM approvals WHERE status IN ('pending','executing','interrupted') ORDER BY id DESC")
+def approvals():
+    return store.query("""
+        SELECT approvals.*, tasks.project, tasks.status AS task_status
+        FROM approvals LEFT JOIN tasks ON tasks.id=approvals.task_id
+        WHERE approvals.status IN ('pending','executing','interrupted')
+        ORDER BY approvals.id DESC
+    """)
 
 @app.post('/api/approvals/{approval_id}/decide')
 def decide(approval_id: int, body: Decision):

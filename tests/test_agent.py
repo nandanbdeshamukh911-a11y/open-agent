@@ -79,6 +79,9 @@ def test_targeted_edit_requires_approval_and_refuses_stale_content(app, tmp_path
     task_id = client.post('/api/tasks', json={'request':'Update second line','project':str(tmp_path)}).json()['id']
     pending = wait_for(lambda: store.query("SELECT * FROM approvals WHERE task_id=? AND status='pending'", (task_id,), True))
     assert target.read_bytes() == original
+    preview = client.get('/api/approvals').json()[0]
+    assert preview['project'] == str(tmp_path.resolve())
+    assert json.loads(preview['args'])['old_text'] == 'second\r\n'
     target.write_bytes(original + b'external edit\r\n')
     assert client.post(f"/api/approvals/{pending['id']}/decide", json={'approved':True}).status_code == 200
     wait_for(lambda: store.query('SELECT status FROM tasks WHERE id=?', (task_id,), True)['status'] == 'blocked')

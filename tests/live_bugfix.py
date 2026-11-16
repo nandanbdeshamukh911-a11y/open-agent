@@ -18,7 +18,8 @@ def safe_code(source):
         function = module.body[0]
         if (function.name != 'add' or function.decorator_list or function.returns or
             function.args.posonlyargs or function.args.kwonlyargs or function.args.vararg or
-            function.args.kwarg or function.args.defaults or [a.arg for a in function.args.args] != ['a','b']): return False
+            function.args.kwarg or function.args.defaults or [a.arg for a in function.args.args] != ['a','b'] or
+            any(arg.annotation for arg in function.args.args) or getattr(function, 'type_params', [])): return False
         if len(function.body) != 1 or not isinstance(function.body[0], ast.Return): return False
         expr = function.body[0].value
         return (isinstance(expr, ast.BinOp) and isinstance(expr.op,(ast.Add,ast.Sub)) and
@@ -29,7 +30,9 @@ def safe_code(source):
 with tempfile.TemporaryDirectory(prefix='open-agent-bugfix-',dir=root/'data') as tmp:
     base = Path(tmp); project = base/'project'; project.mkdir()
     (project/'calculator.py').write_text('def add(a, b):\n    return a - b\n',encoding='utf-8')
-    (project/'test_calculator.py').write_text('import unittest\nfrom calculator import add\n\nclass AddTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n\nif __name__ == "__main__":\n    unittest.main()\n',encoding='utf-8')
+    test_file = project/'test_calculator.py'
+    original_test = b'import unittest\nfrom calculator import add\n\nclass AddTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n\nif __name__ == "__main__":\n    unittest.main()\n'
+    test_file.write_bytes(original_test)
     os.environ['OPEN_AGENT_DATA'] = str(base/'state')
     from fastapi.testclient import TestClient
     from backend.main import app
@@ -49,6 +52,12 @@ with tempfile.TemporaryDirectory(prefix='open-agent-bugfix-',dir=root/'data') as
             approval=next(a for a in task['approvals'] if a['status']=='pending'); args=json.loads(approval['args'])
             action=approval['action']
             safe=(action=='write_file' and args.get('path')=='calculator.py' and safe_code(args.get('content','')))
+            if action == 'replace_text' and args.get('path') == 'calculator.py':
+                original = (project/'calculator.py').read_bytes().decode('utf-8')
+                old, new = args.get('old_text'), args.get('new_text')
+                safe = isinstance(old, str) and bool(old) and isinstance(new, str) and original.count(old) == 1
+                if safe:
+                    safe = safe_code(original.replace(old, new, 1))
             safe |= (action=='command' and args.get('command')=='python -m unittest -v test_calculator' and safe_code((project/'calculator.py').read_text()))
             print('APPROVAL',action,args,'accepted' if safe else 'rejected',flush=True)
             decisions.append((action,args,safe)); client.post(f"/api/approvals/{approval['id']}/decide",json={'approved':safe}).raise_for_status()
@@ -59,6 +68,7 @@ with tempfile.TemporaryDirectory(prefix='open-agent-bugfix-',dir=root/'data') as
             assert task['status']=='completed'
             assert any(x.startswith('Exit code: 1') for x in output)
             assert any(x.startswith('Exit code: 0') for x in output)
+            assert test_file.read_bytes()==original_test
             assert safe_code((project/'calculator.py').read_text()) and 'a + b' in (project/'calculator.py').read_text()
             break
         time.sleep(2)
