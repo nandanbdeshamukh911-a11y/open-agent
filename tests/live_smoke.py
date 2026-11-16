@@ -15,6 +15,8 @@ with tempfile.TemporaryDirectory(prefix='open-agent-live-', dir=ROOT / 'data') a
     project.mkdir()
     from fastapi.testclient import TestClient
     from backend.main import app
+    from backend import store
+    store.init()
     client = TestClient(app, base_url='http://127.0.0.1:8765', headers={'X-Open-Agent': 'local'})
     request = ('Create hello.txt containing exactly the text Hello from Open Agent. '
                'Read the file back to verify it. Do not run terminal commands or download anything.')

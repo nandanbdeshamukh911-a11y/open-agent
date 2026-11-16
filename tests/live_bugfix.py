@@ -36,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix='open-agent-bugfix-',dir=root/'data') as
     os.environ['OPEN_AGENT_DATA'] = str(base/'state')
     from fastapi.testclient import TestClient
     from backend.main import app
-    from backend import agent
+    from backend import agent, store
+    store.init()
     client=TestClient(app,base_url='http://127.0.0.1:8765',headers={'X-Open-Agent':'local'})
     request=('Fix the bug in calculator.py. First run the existing unittest test_calculator.py to reproduce the failure, '
              'then edit only calculator.py, and run the same test again to verify the fix. '

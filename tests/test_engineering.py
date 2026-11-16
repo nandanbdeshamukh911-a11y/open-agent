@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import pytest
 
 from backend import checks, tools
@@ -66,3 +68,10 @@ def test_review_repairs_a_bad_citation_without_repeating_a_tool(app, tmp_path, m
     client.post(f'/api/tasks/{task_id}/resume').raise_for_status()
     wait_for(lambda: store.query('SELECT status FROM tasks WHERE id=?', (task_id,), True)['status'] == 'completed')
     assert not store.query('SELECT id FROM approvals WHERE task_id=?', (task_id,))
+
+
+def test_importing_app_does_not_run_task_recovery(app, tmp_path):
+    _, _, store = app
+    task_id = store.execute("INSERT INTO tasks(request,project,status) VALUES(?,?,'running')", ('Fixture', str(tmp_path)))
+    subprocess.run([sys.executable, '-c', 'import backend.main'], check=True, timeout=15)
+    assert store.query('SELECT status FROM tasks WHERE id=?', (task_id,), True)['status'] == 'running'

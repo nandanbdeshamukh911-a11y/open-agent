@@ -12,6 +12,7 @@ with tempfile.TemporaryDirectory(prefix='open-agent-repo-',dir=root/'data') as t
     from fastapi.testclient import TestClient
     from backend.main import app
     from backend import store
+    store.init()
     client=TestClient(app,base_url='http://127.0.0.1:8765',headers={'X-Open-Agent':'local'})
     result=client.post('/api/skills/import',json={'url':'https://github.com/octocat/Hello-World'}).json()
     target=Path(result['destination']); assert not target.exists()

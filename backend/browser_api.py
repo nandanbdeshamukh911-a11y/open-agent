@@ -1,19 +1,10 @@
-from contextlib import asynccontextmanager
-
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from starlette.concurrency import run_in_threadpool
 
 from . import browser
 
 router = APIRouter(prefix='/api/browser')
-
-
-@asynccontextmanager
-async def lifespan(_app):
-    yield
-    await run_in_threadpool(browser.service.call, 'shutdown')
 
 
 class Navigate(BaseModel):

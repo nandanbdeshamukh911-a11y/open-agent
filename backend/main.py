@@ -4,15 +4,25 @@ import platform
 import shutil
 import subprocess
 import urllib.parse
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import agent, browser_api, chat, store, tools
+from starlette.concurrency import run_in_threadpool
+from . import agent, browser, browser_api, chat, store, tools
 
-store.init()
-app = FastAPI(title='Open Agent', docs_url=None, redoc_url=None, openapi_url=None, lifespan=browser_api.lifespan)
+@asynccontextmanager
+async def lifespan(_app):
+    await run_in_threadpool(store.init)
+    try:
+        yield
+    finally:
+        await run_in_threadpool(browser.service.call, 'shutdown')
+
+
+app = FastAPI(title='Open Agent', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(chat.router)
 app.include_router(browser_api.router)
 

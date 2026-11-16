@@ -12,6 +12,8 @@ with tempfile.TemporaryDirectory(prefix='open-agent-github-', dir=root / 'data')
     os.environ['OPEN_AGENT_DATA'] = tmp
     from fastapi.testclient import TestClient
     from backend.main import app
+    from backend import store
+    store.init()
     client = TestClient(app, base_url='http://127.0.0.1:8765', headers={'X-Open-Agent':'local'})
     url = 'https://github.com/git/git/blob/master/README.md'
     pending = client.post('/api/skills/import', json={'url': url}).json()
@@ -23,7 +25,6 @@ with tempfile.TemporaryDirectory(prefix='open-agent-github-', dir=root / 'data')
         status = client.get('/api/approvals').json()
         if not any(a['id'] == pending['approval_id'] for a in status): break
         time.sleep(.2)
-    from backend import store
     approval = store.query('SELECT * FROM approvals WHERE id=?',(pending['approval_id'],),True)
     print('IMPORT', approval['status'], approval['result'], flush=True)
     assert approval['status'] == 'done'
