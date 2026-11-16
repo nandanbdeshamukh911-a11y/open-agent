@@ -96,13 +96,21 @@ def test_browser_preview_and_agent_approval_use_separate_sessions(app, site, tmp
         wait_for(lambda: client.get(f'/api/chats/{chat_id}').json()['status'] == 'ready')
         assert client.get(f'/api/chats/{chat_id}').json()['messages'][0]['browser_url'] == url + '/'
 
-        replies = iter([
-            {'plan':'Inspect the site','requirements':['Find the initial heading']},
-            {'action':'browser_open','args':{'url':url}},
-            {'action':'browser_inspect'},
-            {'action':'browser_assert','args':{'role':'heading','name':'Before','visible':True}},
-            {'action':'clarify','args':{'question':'Initial heading found.'}},
-        ])
+        def click_reply():
+            revision = browser.service.call('state', f'task-{task_id}')['revision']
+            return {'action':'browser_click','args':{'role':'button','name':'Update heading','revision':revision}}
+
+        def script():
+            yield {'plan':'Inspect the site','requirements':['Find the initial heading']}
+            yield {'action':'browser_open','args':{'url':url}}
+            yield {'action':'browser_inspect'}
+            yield {'action':'browser_assert','args':{'role':'heading','name':'Before','visible':True}}
+            yield click_reply()
+            yield click_reply()
+            yield {'action':'browser_assert','args':{'role':'heading','name':'After','visible':True}}
+            yield {'action':'clarify','args':{'question':'Heading verified.'}}
+
+        replies = script()
         monkeypatch.setattr(agent, 'model_call', lambda _: json.dumps(next(replies)))
         task_id = client.post('/api/tasks',json={'request':'Open the browser fixture','project':str(tmp_path)}).json()['id']
         pending = wait_for(lambda: store.query("SELECT * FROM approvals WHERE task_id=? AND status='pending'", (task_id,), True))
@@ -111,8 +119,13 @@ def test_browser_preview_and_agent_approval_use_separate_sessions(app, site, tmp
         wait_for(lambda: store.query("SELECT status FROM approvals WHERE id=?", (pending['id'],), True)['status'] == 'done')
         state = client.get(f'/api/browser/sessions/task-{task_id}').json()
         assert 'Before' in state['outline'] and 'After Ada' not in state['outline']
+        click = wait_for(lambda: store.query("SELECT * FROM approvals WHERE task_id=? AND status='pending' AND action='browser_click'", (task_id,), True))
+        client.post(f"/api/approvals/{click['id']}/decide", json={'approved':True}).raise_for_status()
         wait_for(lambda: store.query("SELECT status FROM tasks WHERE id=?", (task_id,), True)['status'] == 'blocked')
-        assert any('Browser assertion passed' in row['content'] for row in store.query('SELECT content FROM events WHERE task_id=?', (task_id,)))
+        trace = store.query('SELECT content FROM events WHERE task_id=?', (task_id,))
+        assert any("Browser assertion passed: heading 'After'" in row['content'] for row in trace)
+        assert any('already clicked successfully' in row['content'] for row in trace)
+        assert len(store.query("SELECT id FROM approvals WHERE task_id=? AND action='browser_click'", (task_id,))) == 1
         blocked = client.post('/api/browser/open', json={'url':url + '/redirect'})
         assert blocked.status_code == 400 and 'Redirect blocked' in blocked.text
         assert client.get('/api/browser/sessions/manual').json()['revision'] == activated['revision']
