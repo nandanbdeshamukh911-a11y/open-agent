@@ -125,9 +125,9 @@ def prompt(task):
     system = SYSTEM
     if re.search(r'\b(website|webpage|landing|portfolio|frontend|front.end|design|responsive|anime\.?js|html|site)\b', task['request'], re.I):
         system += (' For a new editorial landing page, portfolio or programme, use design_page '
-                   '{path:"index.html",brand,headline,intro,section,palette:"cobalt"|"forest"|"plum",'
+                   '{path:"index.html",brand,headline,intro,section,palette:"cobalt"|"forest"|"plum",layout:"programme"|"catalogue",'
                    'items:[{label,title,detail}]}. Supply actual copy for the requested audience. '
-                   'This creates one editable, offline HTML file with responsive layout, expandable entries and Anime.js. '
+                   'Use programme for a timetable or catalogue for searchable cards. This creates one editable, offline HTML file with responsive layout, expandable entries and Anime.js. '
                    'For an existing app inspect its stack and edit its components. Preserve requested frameworks and interactions. '
                    'For requested visual verification use browser_project {path:"index.html",viewport:"mobile"} for standalone HTML, '
                    'or browser_open {url,viewport:"mobile"} for a running app, '

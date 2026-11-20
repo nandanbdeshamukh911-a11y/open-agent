@@ -47,7 +47,10 @@ function ApprovalDetails({approval}: {approval: Item}) {
         <div><strong>Replacement text</strong><pre>{args.new_text || '(empty)'}</pre></div>
       </div>
       <p>The edit is rejected if the file changes before execution.</p>
-    </div> : <pre>{format(approval.args)}</pre>}
+    </div> : approval.action === 'design_page' ? <>
+      <p>Create <code>{args.path}</code> · {Math.ceil(new Blob([args.content]).size / 1024)} KiB with embedded Anime.js</p>
+      <details><summary>Inspect the complete HTML</summary><pre>{args.content}</pre></details>
+    </> : <pre>{format(approval.args)}</pre>}
     {approval.status === 'pending' && approval.task_status === 'paused' && <p>Resume the task to decide on this action.</p>}
   </>;
 }

@@ -106,6 +106,11 @@ def test_programme_in_phone_and_desktop_preview(app, tmp_path):
             tools.run('replace_text', edit, tmp_path)
             assert measure() == 0
             assert target.read_text(encoding='utf-8') == original
+            catalogue = design.render({**BRIEF, 'layout':'catalogue'}).encode()
+            state = browser.service.call('browser_project', args={'document':catalogue, 'viewport':'mobile'})
+            for query, expected in [('river', '1 entry'), ('missing term', 'No matching entries.'), ('', '3 entries')]:
+                state = browser.service.call('browser_fill', args={'label':'Search entries','value':query,'revision':state['revision']})
+                assert expected in state['outline'] and state['overflow'] == 0
         finally:
             browser.service.call('shutdown')
             server.shutdown()

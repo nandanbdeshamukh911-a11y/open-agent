@@ -24,6 +24,9 @@ def render(brief):
     palette = brief.get('palette', 'cobalt')
     if not isinstance(palette, str) or palette not in PALETTES:
         raise ValueError('Choose cobalt, forest or plum for palette.')
+    layout = brief.get('layout', 'programme')
+    if layout not in ('programme', 'catalogue'):
+        raise ValueError('Choose programme or catalogue for layout.')
     items = brief.get('items')
     if not isinstance(items, list) or not 1 <= len(items) <= 12:
         raise ValueError('Supply 1 to 12 items with label, title and detail.')
@@ -44,8 +47,10 @@ def render(brief):
     )}
     ink, paper, accent = PALETTES[palette]
     vendor = ASSETS / 'vendor'
+    search = ('<label class="search">Search entries<input id="query" type="search" autocomplete="off"></label>'
+              '<p class="count" role="status" id="matches"></p>') if layout == 'catalogue' else ''
     return Template((ASSETS / 'page.html').read_text(encoding='utf-8')).substitute(
-        **values, ink=ink, paper=paper, accent=accent, rows='\n'.join(rows),
+        **values, ink=ink, paper=paper, accent=accent, layout=layout, search=search, rows='\n'.join(rows),
         library=(vendor / 'anime.umd.min.js').read_text(encoding='utf-8'),
         license=(vendor / 'anime-LICENSE.md').read_text(encoding='utf-8'),
     )

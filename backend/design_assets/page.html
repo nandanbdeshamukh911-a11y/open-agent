@@ -38,6 +38,14 @@ summary strong { font-size:clamp(1.2rem,2.2vw,2rem); letter-spacing:-.035em }
 .toggle::after { content:"+"; font-size:1.55rem }
 details[open] .toggle::after { content:"−" }
 details p { max-width:68ch; line-height:1.6; padding:0 .3rem 1.5rem; margin-left:25% }
+.search { display:grid; gap:.45rem; max-width:26rem; font-weight:650 }
+.search input { font:inherit; padding:.75rem; background:transparent; color:inherit; border:1px solid }
+.count { margin:.7rem 0 1rem; min-height:1.3em }
+.catalogue .entries { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr)); align-items:start; gap:1rem }
+.catalogue details { border:1px solid; padding:1rem }
+.catalogue summary { grid-template-columns:minmax(0,1fr) auto; gap:.6rem }
+.catalogue summary .label { grid-column:1/-1 }
+.catalogue details p { margin:0 }
 footer { border-top:1px solid; border-bottom:0 }
 @media(max-width:680px) {
   .hero { grid-template-columns:1fr; gap:1.5rem }
@@ -48,7 +56,7 @@ footer { border-top:1px solid; border-bottom:0 }
 }
 </style>
 </head>
-<body id="top">
+<body id="top" class="$layout">
 <a href="#main" class="skip">Skip to content</a>
 <header><span class="brand">$brand</span><nav aria-label="Main"><a href="#collection">$section</a></nav></header>
 <main id="main">
@@ -58,7 +66,8 @@ footer { border-top:1px solid; border-bottom:0 }
   </section>
   <section id="collection" class="collection" aria-labelledby="section-title">
     <h2 id="section-title">$section</h2>
-    $rows
+    $search
+    <div class="entries">$rows</div>
   </section>
 </main>
 <footer><strong>$brand</strong><a href="#top">Back to top ↑</a></footer>
@@ -67,6 +76,22 @@ $library
 </script>
 <script>
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const query = document.getElementById('query');
+if (query) {
+  const entries = Array.from(document.querySelectorAll('.entries details'));
+  const count = document.getElementById('matches');
+  function filterEntries() {
+    const term = query.value.trim().toLocaleLowerCase();
+    let visible = 0;
+    for (const entry of entries) {
+      entry.hidden = !entry.textContent.toLocaleLowerCase().includes(term);
+      if (!entry.hidden) visible++;
+    }
+    count.textContent = visible ? visible + (visible === 1 ? ' entry' : ' entries') : 'No matching entries.';
+  }
+  query.addEventListener('input', filterEntries);
+  filterEntries();
+}
 if (!motion.matches) anime.animate('.disc', { x:['8%', '0%'], duration:680, ease:'outCubic' });
 for (const item of document.querySelectorAll('details')) {
   item.addEventListener('toggle', () => {

@@ -38,6 +38,14 @@ summary strong { font-size:clamp(1.2rem,2.2vw,2rem); letter-spacing:-.035em }
 .toggle::after { content:"+"; font-size:1.55rem }
 details[open] .toggle::after { content:"−" }
 details p { max-width:68ch; line-height:1.6; padding:0 .3rem 1.5rem; margin-left:25% }
+.search { display:grid; gap:.45rem; max-width:26rem; font-weight:650 }
+.search input { font:inherit; padding:.75rem; background:transparent; color:inherit; border:1px solid }
+.count { margin:.7rem 0 1rem; min-height:1.3em }
+.catalogue .entries { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr)); align-items:start; gap:1rem }
+.catalogue details { border:1px solid; padding:1rem }
+.catalogue summary { grid-template-columns:minmax(0,1fr) auto; gap:.6rem }
+.catalogue summary .label { grid-column:1/-1 }
+.catalogue details p { margin:0 }
 footer { border-top:1px solid; border-bottom:0 }
 @media(max-width:680px) {
   .hero { grid-template-columns:1fr; gap:1.5rem }
@@ -48,7 +56,7 @@ footer { border-top:1px solid; border-bottom:0 }
 }
 </style>
 </head>
-<body id="top">
+<body id="top" class="programme">
 <a href="#main" class="skip">Skip to content</a>
 <header><span class="brand">Listening Room</span><nav aria-label="Main"><a href="#collection">Weekend programme</a></nav></header>
 <main id="main">
@@ -58,9 +66,10 @@ footer { border-top:1px solid; border-bottom:0 }
   </section>
   <section id="collection" class="collection" aria-labelledby="section-title">
     <h2 id="section-title">Weekend programme</h2>
-    <details><summary role="button" aria-label="Fri · 18:30 Courtyard frequencies"><span class="label">Fri · 18:30</span><strong>Courtyard frequencies</strong><span class="toggle" aria-hidden="true"></span></summary><p>Meet in the courtyard for an open-air listening session built from tape loops and live percussion. Seating opens at 18:00.</p></details>
+    
+    <div class="entries"><details><summary role="button" aria-label="Fri · 18:30 Courtyard frequencies"><span class="label">Fri · 18:30</span><strong>Courtyard frequencies</strong><span class="toggle" aria-hidden="true"></span></summary><p>Meet in the courtyard for an open-air listening session built from tape loops and live percussion. Seating opens at 18:00.</p></details>
 <details><summary role="button" aria-label="Sat · 20:00 Night field notes"><span class="label">Sat · 20:00</span><strong>Night field notes</strong><span class="toggle" aria-hidden="true"></span></summary><p>Join a guided walk from the north gate. Field recordists share the sounds they collect along the river. Bring comfortable shoes.</p></details>
-<details><summary role="button" aria-label="Sun · 11:00 The record exchange"><span class="label">Sun · 11:00</span><strong>The record exchange</strong><span class="toggle" aria-hidden="true"></span></summary><p>Bring one record and a story about it to the listening bar. Each guest gets a turn on the house turntable.</p></details>
+<details><summary role="button" aria-label="Sun · 11:00 The record exchange"><span class="label">Sun · 11:00</span><strong>The record exchange</strong><span class="toggle" aria-hidden="true"></span></summary><p>Bring one record and a story about it to the listening bar. Each guest gets a turn on the house turntable.</p></details></div>
   </section>
 </main>
 <footer><strong>Listening Room</strong><a href="#top">Back to top ↑</a></footer>
@@ -85,6 +94,22 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 </script>
 <script>
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const query = document.getElementById('query');
+if (query) {
+  const entries = Array.from(document.querySelectorAll('.entries details'));
+  const count = document.getElementById('matches');
+  function filterEntries() {
+    const term = query.value.trim().toLocaleLowerCase();
+    let visible = 0;
+    for (const entry of entries) {
+      entry.hidden = !entry.textContent.toLocaleLowerCase().includes(term);
+      if (!entry.hidden) visible++;
+    }
+    count.textContent = visible ? visible + (visible === 1 ? ' entry' : ' entries') : 'No matching entries.';
+  }
+  query.addEventListener('input', filterEntries);
+  filterEntries();
+}
 if (!motion.matches) anime.animate('.disc', { x:['8%', '0%'], duration:680, ease:'outCubic' });
 for (const item of document.querySelectorAll('details')) {
   item.addEventListener('toggle', () => {
