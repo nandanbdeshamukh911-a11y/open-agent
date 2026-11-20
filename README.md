@@ -16,11 +16,23 @@ Open Agent is a local chat and coding assistant for an OpenAI-compatible model s
    ```
 
 3. Open `http://127.0.0.1:8765` in your browser. Leave the terminal open while using the app. Stop it with Ctrl+C.
-4. In **Settings**, check the connection and model name. The app discovers the first available GPT-OSS model from `http://127.0.0.1:11434/v1` by default. Another local OpenAI-compatible endpoint can be configured there. The model must support chat completions and follow the agent's JSON instructions; a model is never downloaded automatically.
+4. In **Settings**, check the connection and model name. The app prefers an installed `ornith-1.5:9b`, then discovers an available GPT-OSS model from `http://127.0.0.1:11434/v1` by default. Another local OpenAI-compatible endpoint can be configured there. The model must support chat completions and follow the agent's JSON instructions; a model is never downloaded automatically.
 5. Start in **Chat** for a regular conversation and use **Workspace** for project work. Conversations are saved and can be reopened.
 6. In **Workspace**, enter an existing project directory and your task. Open **Approvals** to review each proposed edit, command, or download. Give the agent clarifications from the task view when it is paused or blocked.
 
 For development, run `npm --prefix frontend run dev` in a separate terminal; the Vite server proxies `/api` to the backend. Use the production URL above for ordinary use. Run tests with `python -m pytest -q`.
+
+## Build a frontend
+
+In **Workspace**, select an empty project folder and try “Build a responsive editorial website for a weekend listening festival. Include the programme and expandable session descriptions. Use forest green and animate the artwork with Anime.js.”
+
+The built-in `design_page` tool takes a short brief with a brand, headline, introduction, section name, palette and entries. It proposes the exact HTML for approval and creates a new file. It bundles the animation library into the page, so the result opens offline. Native disclosures support keyboard input, and the animation respects reduced-motion preferences. Existing React or other framework projects use the regular component editing tools.
+
+Open [the Listening Room example](examples/listening-room/index.html) locally, or serve it with `python -m http.server 8090 --bind 127.0.0.1 --directory examples/listening-room`. In **Browser**, open `http://127.0.0.1:8090/index.html` and choose Phone or Desktop. To test with the agent, give it the URL and ask it to verify both widths and open the first session. The `browser_layout` check measures horizontal overflow on the rendered page and reports example elements to inspect when it fails. It works on existing sites too.
+
+For a standalone HTML file, the agent can use `browser_project` after approval to render the selected file directly, without a server. The preview checks the approved file hash and serves only those bytes. Use the URL preview for multi-file apps.
+
+The bundled Anime.js UMD build comes from npm package `animejs@4.2.2`. Its [MIT license](backend/design_assets/vendor/anime-LICENSE.md) is included in each generated page.
 
 ## Engineering workflow
 

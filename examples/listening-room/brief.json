@@ -1,0 +1,12 @@
+{
+  "brand": "Listening Room",
+  "headline": "A weekend in sound.",
+  "intro": "Three sessions for curious ears. Settle into the courtyard, follow a field recording after dark, or bring a record to the Sunday exchange.",
+  "section": "Weekend programme",
+  "palette": "forest",
+  "items": [
+    {"label": "Fri · 18:30", "title": "Courtyard frequencies", "detail": "Meet in the courtyard for an open-air listening session built from tape loops and live percussion. Seating opens at 18:00."},
+    {"label": "Sat · 20:00", "title": "Night field notes", "detail": "Join a guided walk from the north gate. Field recordists share the sounds they collect along the river. Bring comfortable shoes."},
+    {"label": "Sun · 11:00", "title": "The record exchange", "detail": "Bring one record and a story about it to the listening bar. Each guest gets a turn on the house turntable."}
+  ]
+}

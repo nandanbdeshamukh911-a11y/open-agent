@@ -1,5 +1,6 @@
 .browser-panel {display:grid;gap:14px;}
-.browser-bar {display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px;}
+.browser-bar {display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:14px;}
+@media(max-width:640px) {.browser-bar {grid-template-columns:auto minmax(0,1fr);}}
 .browser-bar input {margin:0;}
 .browser-controls,.browser-footer {display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;}
 .browser-panel select {font:inherit;max-width:100%;border:1px solid #dce5db;background:#fff;border-radius:6px;padding:7px;color:#26382d;}

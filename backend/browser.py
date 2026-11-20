@@ -11,17 +11,20 @@ from . import store
 from .browser_network import PreviewNetwork, parse_address
 
 WIDTH, HEIGHT = 1120, 720
+VIEWPORTS = {'desktop': (WIDTH, HEIGHT), 'mobile': (390, 844)}
 IDLE_SECONDS = 20 * 60
 MAX_SESSIONS = 4
 CLICK_ROLES = {'button', 'link', 'tab', 'checkbox', 'radio', 'switch', 'menuitem', 'option'}
 ASSERT_ROLES = CLICK_ROLES | {'heading', 'textbox', 'status', 'alert', 'main', 'dialog', 'img'}
-BROWSER_ACTIONS = {'browser_open', 'browser_click', 'browser_fill'}
+BROWSER_ACTIONS = {'browser_open', 'browser_project', 'browser_click', 'browser_fill'}
+DOCUMENT_URL = 'https://preview.invalid/index.html'
 
 
 class Preview:
-    def __init__(self, browser, address, blocked_ports):
+    def __init__(self, browser, address, blocked_ports, viewport, document=None):
         self.context = None
-        self.network = PreviewNetwork(address, blocked_ports)
+        self.network = PreviewNetwork(address, blocked_ports) if document is None else None
+        self.document = document
         self.logs = deque(maxlen=20)
         self.result = {}
         self.image = b''
@@ -30,9 +33,10 @@ class Preview:
         self.visited_at = time.monotonic()
         self.remaining = 100
         self.remaining_bytes = 32 * 1024 * 1024
+        self.width, self.height = VIEWPORTS[viewport]
         try:
             self.context = browser.new_context(
-                viewport={'width': WIDTH, 'height': HEIGHT}, service_workers='block',
+                viewport={'width': self.width, 'height': self.height}, service_workers='block',
                 accept_downloads=False, permissions=[],
             )
             self.context.route('**/*', self.route)
@@ -66,7 +70,12 @@ class Preview:
         try:
             if self.remaining < 0 or self.remaining_bytes <= 0:
                 raise ValueError('Preview request budget exhausted.')
-            status, headers, body = self.network.fetch(request.url, request.method, request.headers)
+            if self.document is None:
+                status, headers, body = self.network.fetch(request.url, request.method, request.headers)
+            elif request.url == DOCUMENT_URL and request.method == 'GET':
+                status, headers, body = 200, {'content-type':'text/html; charset=utf-8'}, self.document
+            else:
+                raise ValueError('Standalone preview includes only the approved HTML file.')
             self.remaining_bytes -= len(body)
             if self.remaining_bytes < 0:
                 raise ValueError('Preview response budget exhausted.')
@@ -85,7 +94,8 @@ class Preview:
         self.result = {
             'url': self.page.url, 'title': self.page.title()[:200], 'status': self.status,
             'revision': self.revision, 'outline': outline, 'diagnostics': list(self.logs),
-            'width': WIDTH, 'height': HEIGHT,
+            'width': self.width, 'height': self.height,
+            'overflow': self.page.evaluate('Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth)'),
         }
         return self.result.copy()
 
@@ -103,19 +113,42 @@ class Preview:
             field.fill(args['value'])
         elif action == 'point':
             x, y = args['x'], args['y']
-            if not (0 <= x < WIDTH and 0 <= y < HEIGHT):
+            if not (0 <= x < self.width and 0 <= y < self.height):
                 raise ValueError('Select a point inside the preview.')
             self.page.mouse.click(x, y)
         elif action == 'scroll':
             self.page.evaluate('(distance) => window.scrollBy(0, distance)', args['distance'])
         return self.capture()
 
+    def check_layout(self):
+        metrics = self.page.evaluate("""() => {
+            const viewport = document.documentElement.clientWidth;
+            const overflow = Math.max(0, document.documentElement.scrollWidth - viewport);
+            const examples = [];
+            if (overflow) {
+                for (const element of document.body.querySelectorAll('*')) {
+                    const rect = element.getBoundingClientRect();
+                    if (rect.width && rect.right > viewport + 1) {
+                        examples.push(element.tagName.toLowerCase() + (element.id ? '#' + element.id.slice(0,80) : '')
+                            + ' (' + Math.round(rect.width) + 'px wide)');
+                        if (examples.length === 5) break;
+                    }
+                }
+            }
+            return {overflow, examples};
+        }""")
+        if metrics['overflow']:
+            detail = ', '.join(metrics['examples']) or 'Inspect root styles and pseudo-elements.'
+            raise ValueError(f'{self.width}px preview overflows horizontally by {metrics["overflow"]}px. Elements near the edge: {detail}')
+        return f'Layout check passed at {self.width} x {self.height}: 0px horizontal overflow.'
+
     def close(self):
         try:
             if self.context:
                 self.context.close()
         finally:
-            self.network.close()
+            if self.network is not None:
+                self.network.close()
 
 
 class BrowserService:
@@ -168,8 +201,8 @@ class BrowserService:
             self.sessions.pop(expired).close()
         if action == 'list':
             return [{'id': name, **{field: preview.result[field] for field in ('url', 'title')}} for name, preview in self.sessions.items()]
-        if action == 'browser_open':
-            address = parse_address(args['url'])
+        if action in ('browser_open', 'browser_project'):
+            address = parse_address(DOCUMENT_URL if action == 'browser_project' else args['url'])
             model = store.query("SELECT value FROM settings WHERE key='model_url'", one=True)
             blocked_ports = set()
             if model:
@@ -180,7 +213,8 @@ class BrowserService:
             if key not in self.sessions and len(self.sessions) >= MAX_SESSIONS:
                 raise ValueError('Close an existing browser session before opening another.')
             self.launch()
-            preview = Preview(self.browser, address, blocked_ports)
+            document = args['document'] if action == 'browser_project' else None
+            preview = Preview(self.browser, address, blocked_ports, args.get('viewport', 'desktop'), document)
             # A revision from a closed page must never authorize the replacement page.
             preview.revision = time.monotonic_ns() // 1_000
             preview.result['revision'] = preview.revision
@@ -201,6 +235,8 @@ class BrowserService:
             return preview.image
         if action == 'browser_inspect':
             return preview.capture()
+        if action == 'browser_layout':
+            return preview.check_layout()
         if action == 'browser_assert':
             role, name = accessible_target(args, ASSERT_ROLES)
             expected = args.get('visible', True)
@@ -231,8 +267,13 @@ def accessible_target(args, roles):
 
 
 def prepare_action(action, args):
-    if action == 'browser_open':
-        return {'url': str(parse_address(args.get('url')))}
+    if action in ('browser_open', 'browser_project'):
+        viewport = args.get('viewport', 'desktop')
+        if not isinstance(viewport, str) or viewport not in VIEWPORTS:
+            raise ValueError('Choose mobile or desktop for viewport.')
+        if action == 'browser_project':
+            return {'path':args.get('path', 'index.html'), 'viewport':viewport}
+        return {'url': str(parse_address(args.get('url'))), 'viewport': viewport}
     revision = args.get('revision')
     if isinstance(revision, str) and revision.isascii() and revision.isdecimal() and len(revision) <= 16:
         revision = int(revision)

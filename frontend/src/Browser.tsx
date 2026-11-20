@@ -5,11 +5,12 @@ type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 type Session = {id: string; title: string; url: string};
 type Preview = {
   title: string; url: string; status: number | null; revision: number;
-  outline: string; diagnostics: string[]; width: number; height: number;
+  outline: string; diagnostics: string[]; width: number; height: number; overflow: number;
 };
 
 export default function Browser({api, onCode}: {api: Api; onCode: (message: string) => void}) {
   const [url, setUrl] = useState('');
+  const [viewport, setViewport] = useState('desktop');
   const [id, setId] = useState('manual');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -51,7 +52,7 @@ export default function Browser({api, onCode}: {api: Api; onCode: (message: stri
     event.preventDefault();
     if (!url.trim()) return;
     void perform(async () => {
-      const opened = await api<Preview>('/browser/open', 'POST', {url: url.trim()});
+      const opened = await api<Preview>('/browser/open', 'POST', {url: url.trim(), viewport});
       setId('manual');
       setPreview(opened);
     });
@@ -87,6 +88,9 @@ export default function Browser({api, onCode}: {api: Api; onCode: (message: stri
       <label htmlFor="browser-url">Address</label>
       <input id="browser-url" value={url} onChange={event => setUrl(event.target.value)}
         placeholder="http://127.0.0.1:3000 or https://example.com" maxLength={2048} />
+      <select aria-label="Preview viewport" value={viewport} onChange={event => setViewport(event.target.value)}>
+        <option value="desktop">Desktop</option><option value="mobile">Phone</option>
+      </select>
       <button disabled={!url.trim() || busy} className="primary">Open</button>
     </form>
     <div className="browser-controls">
@@ -118,6 +122,7 @@ export default function Browser({api, onCode}: {api: Api; onCode: (message: stri
         <div className="browser-location">
           <strong>{preview.title || 'Browser preview'}</strong>
           <span>{preview.status !== null && `HTTP ${preview.status} · `}{preview.url}</span>
+          <span>{preview.width} × {preview.height} · Horizontal overflow {preview.overflow}px</span>
         </div>
         <img className={id === 'manual' && !busy ? 'interactive' : ''} alt="Rendered site preview"
           width={preview.width} height={preview.height}

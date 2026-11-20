@@ -80,7 +80,7 @@ def status():
         response = httpx.get(url,timeout=3,trust_env=False); response.raise_for_status()
         result['models'] = [x.get('id','') for x in response.json().get('data',[])]
         if not result['model_name']:
-            result['model_name'] = next((x for x in result['models'] if 'gpt-oss' in x.lower()), '')
+            result['model_name'] = agent.preferred_model(result['models'])
     except Exception as e: result['runtime_error'] = str(e)
     return result
 

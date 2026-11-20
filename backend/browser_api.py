@@ -1,3 +1,4 @@
+from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -9,11 +10,12 @@ router = APIRouter(prefix='/api/browser')
 
 class Navigate(BaseModel):
     url: str = Field(min_length=1, max_length=2048)
+    viewport: Literal['desktop', 'mobile'] = 'desktop'
 
 
 class Point(BaseModel):
     x: int = Field(ge=0, lt=browser.WIDTH)
-    y: int = Field(ge=0, lt=browser.HEIGHT)
+    y: int = Field(ge=0, lt=max(height for _, height in browser.VIEWPORTS.values()))
     revision: int = Field(gt=0)
 
 

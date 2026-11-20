@@ -12,7 +12,7 @@ async function api<T = any>(path:string, method='GET', body?:unknown) {
 function App(){
   const [tab,setTab]=useState('Chat'), [tasks,setTasks]=useState<Item[]>([]), [task,setTask]=useState<Item|null>(null), [selected,setSelected]=useState<number|null>(null);
   const [approvals,setApprovals]=useState<Item[]>([]), [memories,setMemories]=useState<Item[]>([]), [skills,setSkills]=useState<Item[]>([]), [status,setStatus]=useState<Item>({});
-  const [project,setProject]=useState(''), [request,setRequest]=useState(''), [message,setMessage]=useState(''), [memory,setMemory]=useState(''), [url,setUrl]=useState(''), [modelUrl,setModelUrl]=useState('http://127.0.0.1:11434/v1'), [modelName,setModelName]=useState('gpt-oss:20b'), [retries,setRetries]=useState(3), [inspection,setInspection]=useState<Item|null>(null), [error,setError]=useState('');
+  const [project,setProject]=useState(''), [request,setRequest]=useState(''), [message,setMessage]=useState(''), [memory,setMemory]=useState(''), [url,setUrl]=useState(''), [modelUrl,setModelUrl]=useState('http://127.0.0.1:11434/v1'), [modelName,setModelName]=useState(''), [retries,setRetries]=useState(3), [inspection,setInspection]=useState<Item|null>(null), [error,setError]=useState('');
   async function refresh(){
     try {const [a,b,c,d]=await Promise.all([api('/tasks'),api('/approvals'),api('/memories'),api('/skills')]);setTasks(a);setApprovals(b);setMemories(c);setSkills(d);if(selected) setTask(await api('/tasks/'+selected));}
     catch(e){setError(String(e));}

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="$intro">
+<title>$brand — $headline</title>
+<style>
+:root { --ink:$ink; --paper:$paper; --accent:$accent; color:var(--ink); background:var(--paper); font-family:Inter,Arial,sans-serif }
+* { box-sizing:border-box }
+body { margin:0; overflow-wrap:anywhere }
+a { color:inherit; text-underline-offset:.25em }
+:focus-visible { outline:3px solid currentColor; outline-offset:4px }
+header,main,footer { width:min(86rem,90%); margin-inline:auto }
+header,footer { display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; padding:1.35rem 0; border-bottom:1px solid }
+.brand { font-weight:760; letter-spacing:-.045em; font-size:1.35rem }
+.skip { position:absolute; left:1rem; top:-5rem; z-index:2; background:white; padding:.7rem }
+.skip:focus { top:1rem }
+.hero { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:clamp(2rem,5vw,6rem); align-items:center; padding:clamp(2rem,6vw,6rem) 0 }
+h1,h2,p { margin:0 }
+h1,h2 { font-family:Georgia,'Times New Roman',serif; font-weight:400; line-height:.99; letter-spacing:-.055em; text-wrap:balance }
+h1 { font-size:clamp(3.3rem,7.7vw,7.6rem) }
+.intro { max-width:46ch; font-size:clamp(1.04rem,1.6vw,1.35rem); line-height:1.5; margin:1.5rem 0 }
+.cta { display:inline-flex; align-items:center; gap:1.4rem; background:var(--ink); color:var(--paper); padding:.9rem 1.2rem; text-decoration:none; border-radius:2rem }
+.cta:focus-visible { outline-color:var(--ink) }
+.poster { aspect-ratio:1.12; position:relative; overflow:hidden; background:var(--accent) }
+.disc { position:absolute; width:145%; aspect-ratio:1; border-radius:50%; left:15%; top:-28%; background:repeating-radial-gradient(circle, var(--ink) 0 4px,var(--accent) 4.5px 6px,var(--ink) 6.5px 10px) }
+.disc::after { content:""; position:absolute; inset:35%; border-radius:50%; background:var(--paper); border:1.2rem solid var(--ink) }
+.poster::after { content:""; position:absolute; inset:56% 58% 0 0; background:var(--ink); border-radius:0 100% 0 0 }
+.collection { border-top:2px solid; padding:2rem 0 4rem }
+h2 { font-size:clamp(2.3rem,4.5vw,4.6rem); margin-bottom:1.5rem }
+details { border-top:1px solid currentColor }
+details:last-child { border-bottom:1px solid }
+summary { display:grid; grid-template-columns:minmax(5rem,1fr) 3fr 1.5rem; gap:1rem; align-items:center; padding:1.25rem .3rem; cursor:pointer; list-style:none }
+summary::-webkit-details-marker { display:none }
+.label { font: .85rem/1.4 ui-monospace,monospace }
+summary strong { font-size:clamp(1.2rem,2.2vw,2rem); letter-spacing:-.035em }
+.toggle::after { content:"+"; font-size:1.55rem }
+details[open] .toggle::after { content:"−" }
+details p { max-width:68ch; line-height:1.6; padding:0 .3rem 1.5rem; margin-left:25% }
+footer { border-top:1px solid; border-bottom:0 }
+@media(max-width:680px) {
+  .hero { grid-template-columns:1fr; gap:1.5rem }
+  .poster { aspect-ratio:2.2 }
+  summary { grid-template-columns:minmax(0,1fr) auto; gap:.35rem }
+  summary .label { grid-column:1/-1 }
+  details p { margin-left:0 }
+}
+</style>
+</head>
+<body id="top">
+<a href="#main" class="skip">Skip to content</a>
+<header><span class="brand">$brand</span><nav aria-label="Main"><a href="#collection">$section</a></nav></header>
+<main id="main">
+  <section class="hero" aria-labelledby="headline">
+    <div><h1 id="headline">$headline</h1><p class="intro">$intro</p><a class="cta" href="#collection">$section <span aria-hidden="true">↓</span></a></div>
+    <div class="poster" aria-hidden="true"><div class="disc"></div></div>
+  </section>
+  <section id="collection" class="collection" aria-labelledby="section-title">
+    <h2 id="section-title">$section</h2>
+    $rows
+  </section>
+</main>
+<footer><strong>$brand</strong><a href="#top">Back to top ↑</a></footer>
+<script>/*! $license */
+$library
+</script>
+<script>
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+if (!motion.matches) anime.animate('.disc', { x:['8%', '0%'], duration:680, ease:'outCubic' });
+for (const item of document.querySelectorAll('details')) {
+  item.addEventListener('toggle', () => {
+    if (item.open && !motion.matches) anime.animate(item.querySelector('p'), { y:[6,0], duration:200, ease:'outQuad' });
+  });
+}
+</script>
+</body></html>

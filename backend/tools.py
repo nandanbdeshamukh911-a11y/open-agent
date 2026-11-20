@@ -14,6 +14,7 @@ from . import checks, store
 MAX_OUTPUT = 30000
 MAX_FILE_BYTES = 2_000_000
 PROJECT_CATALOG = [
+    {'name': 'Frontend designer', 'description': 'Generate an editable editorial page from a short brief, with responsive typography, keyboard-accessible disclosures and offline Anime.js motion. Review the HTML before creation.'},
     {'name': 'Read and search files', 'description': 'Read selected lines and find exact text in the project.'},
     {'name': 'Git status and diff', 'description': 'Review staged and unstaged changes using fixed Git commands with approval.'},
     {'name': 'Targeted edit', 'description': 'Replace an exact snippet after approval. Reject the edit if the file changed since review.'},
@@ -113,6 +114,11 @@ def git_inspect(action, args, project):
 
 
 def run(action, args, project=None):
+    if action == 'design_page':
+        target = workspace_path(project, args['path'])
+        with target.open('x', encoding='utf-8', newline='\n') as output:
+            output.write(args['content'])
+        return f'Created {args["path"]} with responsive CSS and bundled Anime.js.'
     if action == 'project_checks':
         return json.dumps(checks.discover(workspace_path(project, args.get('path', '.'))), indent=2)
     if action == 'run_check':

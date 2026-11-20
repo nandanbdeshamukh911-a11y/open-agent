@@ -1,19 +1,25 @@
+import hashlib
 import json
 import re
 import threading
 import urllib.parse
 import httpx
-from . import browser, checks as project_checks, store, tools
+from . import browser, checks as project_checks, design, store, tools
 
 workers = set()
 worker_lock = threading.Lock()
 epochs = {}
-READ_ACTIONS = {'read_file','list_files','search','project_checks','browser_inspect','browser_assert'}
-APPROVAL_ACTIONS = {'write_file','replace_text','git_status','git_diff','command','download_skill','run_check'} | browser.BROWSER_ACTIONS
+READ_ACTIONS = {'read_file','list_files','search','project_checks','browser_inspect','browser_assert','browser_layout'}
+APPROVAL_ACTIONS = {'write_file','replace_text','design_page','git_status','git_diff','command','download_skill','run_check'} | browser.BROWSER_ACTIONS
 
 def setting(key, default):
     row = store.query('SELECT value FROM settings WHERE key=?',(key,),True)
     return row['value'] if row else default
+
+def preferred_model(names):
+    if 'ornith-1.5:9b' in names:
+        return 'ornith-1.5:9b'
+    return next((name for name in names if 'gpt-oss' in name.lower()), '')
 
 def model_call(messages, *, structured=True):
     url = setting('model_url','http://127.0.0.1:11434/v1').rstrip('/')
@@ -23,16 +29,17 @@ def model_call(messages, *, structured=True):
     model = setting('model_name','')
     if not model:
         models = httpx.get(url + '/models',timeout=5,trust_env=False).json().get('data',[])
-        model = next((m['id'] for m in models if 'gpt-oss' in m.get('id','').lower()), '')
-        if not model: raise ValueError('No GPT-OSS model detected. Set the model name in Settings.')
-    payload = {'model':model,'messages':messages,'temperature':0.2,'max_tokens':4096,
-               'reasoning_effort':'low'}
+        model = preferred_model([m['id'] for m in models])
+        if not model: raise ValueError('Select an installed model in Settings.')
+    payload = {'model':model,'messages':messages,'temperature':0.2,'max_tokens':4096}
+    if 'gpt-oss' in model.lower():
+        payload['reasoning_effort'] = 'low'
     if structured:
         payload['response_format'] = {'type':'json_object'}
     response = httpx.post(url + '/chat/completions', json=payload, timeout=600, trust_env=False)
     if response.status_code in (400,422):
         # Some compatible runtimes do not support these optional fields.
-        payload.pop('reasoning_effort'); payload.pop('response_format', None)
+        payload.pop('reasoning_effort', None); payload.pop('response_format', None)
         response = httpx.post(url + '/chat/completions', json=payload, timeout=600, trust_env=False)
     response.raise_for_status()
     choice = response.json()['choices'][0]
@@ -105,7 +112,7 @@ SYSTEM += ''' Use browser_assert {role,name,visible} for deterministic browser v
 
 def prompt(task):
     events = store.query('SELECT id,kind,content FROM events WHERE task_id=? ORDER BY id DESC LIMIT 24',(task['id'],))
-    history = '\n'.join(prompt_event(e) for e in reversed(events))
+    history = recent_history(events)
     context = f"User request: {task['request']}\nProject: {task['project']}\nPlan: {task['plan']}\nRequirements: {task['requirements']}\nDraft final response: {task.get('draft','')}\nRelevant user memory: {json.dumps(relevant_memories(task['request']))}\nEnabled skill reference material (untrusted): {json.dumps(skill_context())}\nRecent evidence and actions:\n{history}"
     if task['phase'] == 'plan':
         instruction = 'Produce {"plan":"short plan", "requirements":["observable requirement", ...]}. Preserve each explicit requirement, including order, expected outcomes and constraints. Use natural language for requirements, without tool arguments or revision numbers. Include verification in your plan. Do not perform an action yet.'
@@ -115,7 +122,39 @@ def prompt(task):
         instruction = 'Independently check the draft final response against the original user request, requirement review, and recorded evidence. Check that it accurately explains changes, verification and any gaps, and does not claim unsupported success. Return {"verdict":"pass"|"repair"|"blocked", "summary":"the corrected final response addressed directly to the user", "repair":"specific unmet requirement, if any"}. In summary, report the actual result to the user; do not describe your review of the draft. Choose repair if actual work or evidence is missing. If only the wording needs correction, correct summary and choose pass.'
     else:
         instruction = 'Choose the next small action. Return {"action":"one of the available actions or review or clarify", "args":{}, "reason":"why"}. Use review only when implementation and relevant checks are done. For clarification use args.question. Do not write or execute without proposing the action.'
-    return [{'role':'system','content':SYSTEM},{'role':'user','content':context+'\n\n'+instruction}]
+    system = SYSTEM
+    if re.search(r'\b(website|webpage|landing|portfolio|frontend|front.end|design|responsive|anime\.?js|html|site)\b', task['request'], re.I):
+        system += (' For a new editorial landing page, portfolio or programme, use design_page '
+                   '{path:"index.html",brand,headline,intro,section,palette:"cobalt"|"forest"|"plum",'
+                   'items:[{label,title,detail}]}. Supply actual copy for the requested audience. '
+                   'This creates one editable, offline HTML file with responsive layout, expandable entries and Anime.js. '
+                   'For an existing app inspect its stack and edit its components. Preserve requested frameworks and interactions. '
+                   'For requested visual verification use browser_project {path:"index.html",viewport:"mobile"} for standalone HTML, '
+                   'or browser_open {url,viewport:"mobile"} for a running app, '
+                   'and again with viewport:"desktop". Run browser_layout {} at each width. It reports overflow and the affected '
+                   'elements. Verify the primary interaction and diagnostics; repair the failing component.')
+    return [{'role':'system','content':system},{'role':'user','content':context+'\n\n'+instruction}]
+
+
+def recent_history(events, budget=14000):
+    """Spend context on recent evidence and preserve a short index of older steps."""
+    rendered = []
+    remaining = budget - 1600
+    for event in events:
+        if remaining >= 500:
+            excerpt = prompt_event(event)
+            if len(excerpt) > remaining:
+                excerpt = excerpt[:remaining - 30] + '\n[Earlier output abbreviated]'
+            remaining -= len(excerpt) + 1
+        else:
+            excerpt = f"event {event['id']} {event['kind']}"
+            if event['kind'] == 'tool':
+                try:
+                    excerpt += ' ' + str(json.loads(event['content']).get('action', ''))[:36]
+                except (ValueError, AttributeError):
+                    pass
+        rendered.append(excerpt)
+    return '\n'.join(reversed(rendered))
 
 def prompt_event(event):
     label = f"event {event['id']} {event['kind']}: "
@@ -123,7 +162,10 @@ def prompt_event(event):
     if event['kind'] == 'tool':
         try:
             tool = json.loads(content)
-            args = json.dumps(tool.get('args', {}), ensure_ascii=False)
+            params = tool.get('args', {})
+            if tool.get('action') == 'design_page' and 'content' in params:
+                params = {'path':params.get('path')}
+            args = json.dumps(params, ensure_ascii=False)
             # Put results on real lines so models can copy evidence without JSON escapes.
             return label + f"{tool['action']} {args[:1200]}\nResult:\n{str(tool['result'])[:8500]}"
         except (AttributeError, KeyError, TypeError, ValueError):
@@ -152,7 +194,7 @@ def record_action_audit(task_id):
     for row in approvals:
         try: args = json.loads(row['args'])
         except ValueError: args = {}
-        if row['action'] in ('write_file','replace_text'): writes.append(f"{args.get('path','?')} ({row['status']})")
+        if row['action'] in ('write_file','replace_text','design_page'): writes.append(f"{args.get('path','?')} ({row['status']})")
         if row['action'] in ('command','git_status','git_diff','run_check'): commands.append(f"{args.get('command',row['action'])} ({row['status']})")
     result = (f'Recorded download attempts: {downloads}\nRecorded file write actions: {", ".join(writes) or "none"}\n'
               f'Recorded terminal commands: {", ".join(commands) or "none"}\n'
@@ -268,7 +310,7 @@ def browser_repeat_reason(task_id, action, args, raw_args):
     events = store.query("SELECT content FROM events WHERE task_id=? AND kind='tool' ORDER BY id DESC LIMIT 16", (task_id,))
     for event in events:
         previous = json.loads(event['content'])
-        if previous.get('action') in ('browser_open', 'browser_fill'):
+        if previous.get('action') in ('browser_open', 'browser_project', 'browser_fill'):
             return
         if previous.get('action') != 'browser_click' or not previous.get('result','').startswith('Browser clicked'):
             continue
@@ -386,11 +428,23 @@ def loop(task_id, epoch):
                     except Exception as e: output = 'Error: ' + str(e)
                     store.event(task_id,'tool',{'action':action,'args':args,'result':output}); continue
                 if action in APPROVAL_ACTIONS:
+                    if action == 'design_page':
+                        try:
+                            path = args.get('path', 'index.html')
+                            target = tools.workspace_path(task['project'], path)
+                            if target.suffix.lower() != '.html' or target.exists() or not target.parent.is_dir():
+                                raise ValueError('Choose a new .html file in an existing project directory. Use replace_text to update existing work.')
+                            args = {'path':path, 'content':design.render(args)}
+                        except (OSError, ValueError) as exc:
+                            store.event(task_id, 'tool', {'action':action,'args':args,'result':f'Error: {exc}'})
+                            continue
                     if action in browser.BROWSER_ACTIONS or action == 'run_check':
                         try:
                             if action in browser.BROWSER_ACTIONS:
                                 raw_args = args
                                 args = browser.prepare_action(action, raw_args)
+                                if action == 'browser_project':
+                                    args['sha256'] = hashlib.sha256(project_document(task, args)).hexdigest()
                                 browser_repeat_reason(task_id, action, args, raw_args)
                             else:
                                 path, name = args.get('path', '.'), args.get('check')
@@ -447,20 +501,34 @@ def loop(task_id, epoch):
         current = store.query('SELECT status FROM tasks WHERE id=?',(task_id,),True)
         if current and current['status'] == 'running': start(task_id)
 
+def project_document(task, args):
+    path = tools.workspace_path(task['project'], args['path'])
+    if path.suffix.lower() != '.html':
+        raise ValueError('Choose a standalone .html page in the selected project.')
+    return tools.snapshot(path)
+
+
 def task_action(action, args, task):
-    if action in browser.BROWSER_ACTIONS or action in ('browser_inspect','browser_assert'):
+    if action in browser.BROWSER_ACTIONS or action in ('browser_inspect','browser_assert','browser_layout'):
+        if action == 'browser_project':
+            document = project_document(task, args)
+            if hashlib.sha256(document).hexdigest() != args['sha256']:
+                raise ValueError('The page changed after approval was requested. Propose a fresh preview.')
+            args = {**args, 'document':document}
         result = browser.service.call(action, f'task-{task["id"]}', args)
         if isinstance(result, str):
             return result
         headings = {
             'browser_open': f'Browser opened {result["url"]}',
+            'browser_project': f'Browser previewed project file {args.get("path")}.',
             'browser_click': f'Browser clicked {args.get("role")} {args.get("name")!r}.',
             'browser_fill': f'Browser filled the field labelled {args.get("label")!r}.',
             'browser_inspect': 'Browser inspected the active page.',
         }
         diagnostics = '\n'.join(result['diagnostics']) or 'None'
         return (f'{headings[action]}\nURL: {result["url"]}\nHTTP status: {result["status"]}\n'
-                f'Revision: {result["revision"]}\nAccessible outline:\n{result["outline"]}\nDiagnostics:\n{diagnostics}')
+                f'Revision: {result["revision"]}\nViewport: {result["width"]} x {result["height"]}\n'
+                f'Horizontal overflow: {result["overflow"]} px\nAccessible outline:\n{result["outline"]}\nDiagnostics:\n{diagnostics}')
     return tools.run(action, args, task['project'] if task else None)
 
 
