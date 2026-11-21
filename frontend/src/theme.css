@@ -11,3 +11,25 @@
 .review-panel a { color:light-dark(#315e4c,#a0dfb1); }
 .review-panel select { margin:.6rem; padding:.35rem; }
 .review-panel details:target { outline:2px solid light-dark(#48825e,#87bd99); }
+:root { font-family:Inter, Arial, sans-serif; background:light-dark(#fafbfd,#111318); color:light-dark(#202124,#e4e7ed); }
+.app header { margin-bottom:2rem; }
+.sidebar { background:light-dark(#f1f4fa,#191c23); border-right:0; }
+.brand { padding-bottom:2rem; }
+.nav { font-weight:500; font-size:.91rem; border-radius:2rem; }
+.nav.active { background:light-dark(#dce8ff,#2c405f); color:light-dark(#183864,#d5e5ff); }
+.card { background:light-dark(#fff,#1b1e25); border-color:light-dark(#dce1e9,#393e49); border-radius:18px; box-shadow:none; }
+.app .primary { background:light-dark(#185abc,#a7c7ff)!important; color:light-dark(#fff,#09274e)!important; border-color:transparent!important; }
+.chat-panel { min-height:min(67vh,680px); }
+.chat-empty h2 { font-weight:500; font-size:clamp(1.6rem,3.4vw,3rem); letter-spacing:-.045em; }
+.chat-empty p { max-width:40ch; margin: .75rem auto; line-height:1.65; }
+.chat-image { display:block; max-width:min(18rem,100%); max-height:14rem; object-fit:contain; margin:.65rem 0; border-radius:.75rem; }
+.attachment-button { position:relative; cursor:pointer; font-size:.8rem; padding:.55rem; overflow:hidden; }
+.attachment-button input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.attachment-button:focus-within { outline:2px solid currentColor; }
+.engineering { display:grid; gap:.8rem; }
+.engineering label { margin:0; }
+.engineering select { display:block; margin-top:.4rem; width:100%; padding:.65rem; font:inherit; }
+.check-option,.connection-row { display:flex; align-items:center; gap:.7rem; margin-block:.8rem; line-height:1.5; }
+.check-option input { width:auto; margin:0; }
+.connection-row { justify-content:space-between; overflow-wrap:anywhere; }
+@media(prefers-reduced-motion:no-preference) { html,.chat-transcript { scroll-behavior:smooth; } }

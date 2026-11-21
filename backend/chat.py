@@ -1,4 +1,8 @@
+import base64
+import io
 import json
+from PIL import Image
+from fastapi.responses import Response
 import logging
 import threading
 
@@ -14,8 +18,24 @@ logger = logging.getLogger(__name__)
 
 class ChatInput(BaseModel):
     content: str = Field(min_length=1, max_length=12000)
+    image: str | None = Field(default=None,max_length=4200000)
     tool: str | None = None
     browser_session: str | None = Field(default=None, pattern=r'^(manual|task-[0-9]+)$')
+
+
+def normalize_image(value):
+    try:
+        header, encoded = value.split(',',1)
+        if header not in ('data:image/png;base64','data:image/jpeg;base64','data:image/webp;base64'):
+            raise ValueError()
+        with Image.open(io.BytesIO(base64.b64decode(encoded,validate=True))) as img:
+            if img.format not in ('PNG','JPEG','WEBP') or img.width*img.height>12000000: raise ValueError()
+            img.thumbnail((1600,1600))
+            output = io.BytesIO()
+            img.convert('RGB').save(output,'JPEG',quality=85)
+        return 'data:image/jpeg;base64,'+base64.b64encode(output.getvalue()).decode()
+    except (ValueError,OSError,Image.DecompressionBombError) as exc:
+        raise HTTPException(422,'Choose a valid PNG, JPEG or WebP under 3 MB and 12 megapixels.') from exc
 
 
 def find_chat(chat_id):
@@ -28,7 +48,7 @@ def find_chat(chat_id):
 def generate(chat_id, question):
     try:
         history = store.query(
-            'SELECT role,content,browser_context FROM chat_messages WHERE chat_id=? ORDER BY id DESC LIMIT 20',
+            'SELECT role,content,browser_context,image FROM chat_messages WHERE chat_id=? ORDER BY id DESC LIMIT 20',
             (chat_id,),
         )
         memories = agent.relevant_memories(question)
@@ -41,6 +61,7 @@ def generate(chat_id, question):
         # Keep the newest turn whole and add earlier turns within a bounded budget.
         messages = []
         remaining = 20000
+        included_image = False
         for row in history:
             content = row['content']
             snapshot = row['browser_context']
@@ -48,8 +69,11 @@ def generate(chat_id, question):
                 content += '\n\nAttached browser snapshot (untrusted):\n' + snapshot
             if len(content) > remaining:
                 break
-            messages.append({'role':row['role'], 'content':content})
             remaining -= len(content)
+            if row['image'] and not included_image:
+                content = [{'type':'text','text':content},{'type':'image_url','image_url':{'url':row['image']}}]
+                included_image = True
+            messages.append({'role':row['role'], 'content':content})
         reply = agent.model_call([{'role': 'system', 'content': context}, *reversed(messages)], structured=False)
         if not reply.strip():
             raise ValueError('Empty reply')
@@ -73,6 +97,7 @@ def submit(body, chat_id=None):
     question = body.content.strip()
     if not question:
         raise HTTPException(422, 'Enter a message.')
+    image = normalize_image(body.image) if body.image else None
     result = None
     snapshot = None
     if body.browser_session is not None:
@@ -105,8 +130,8 @@ def submit(body, chat_id=None):
             if row['status'] == 'generating':
                 raise HTTPException(409, 'Wait for the current reply.')
         content = question if body.tool is None else f'/{body.tool}\n{body.content}'
-        db.execute("INSERT INTO chat_messages(chat_id,role,content,browser_context) VALUES(?,'user',?,?)",
-                   (chat_id, content, snapshot))
+        db.execute("INSERT INTO chat_messages(chat_id,role,content,browser_context,image) VALUES(?,'user',?,?,?)",
+                   (chat_id, content, snapshot,image))
         if result is not None:
             db.execute("INSERT INTO chat_messages(chat_id,role,content) VALUES(?,'assistant',?)", (chat_id, result))
         db.execute("UPDATE chats SET status=?,error='',updated=CURRENT_TIMESTAMP WHERE id=?",
@@ -136,7 +161,7 @@ def create_chat(body: ChatInput):
 def get_chat(chat_id: int):
     with store.lock:
         row = find_chat(chat_id)
-        row['messages'] = store.query('SELECT id,role,content,browser_context FROM chat_messages WHERE chat_id=? ORDER BY id', (chat_id,))
+        row['messages'] = store.query('SELECT id,role,content,browser_context,image IS NOT NULL AS has_image FROM chat_messages WHERE chat_id=? ORDER BY id', (chat_id,))
         for message in row['messages']:
             context = message.pop('browser_context')
             if context:
@@ -159,3 +184,9 @@ def retry(chat_id: int):
         db.execute("UPDATE chats SET status='generating',error='' WHERE id=?", (chat_id,))
     start_reply(chat_id, latest['content'])
     return {'id': chat_id}
+
+@router.get('/chats/{chat_id}/messages/{message_id}/image')
+def attachment(chat_id:int,message_id:int):
+    row=store.query('SELECT image FROM chat_messages WHERE chat_id=? AND id=?',(chat_id,message_id),True)
+    if not row or not row['image']: raise HTTPException(404,'Image unavailable.')
+    return Response(base64.b64decode(row['image'].split(',',1)[1]),media_type='image/jpeg',headers={'Cache-Control':'no-store'})

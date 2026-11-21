@@ -2,7 +2,7 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import './chat.css';
 
 type PageSession = {id: string; title: string; url: string};
-type Message = {id: number; role: 'user' | 'assistant'; content: string; browser_url?: string};
+type Message = {id: number; role: 'user' | 'assistant'; content: string; has_image?: boolean; browser_url?: string};
 type ChatSummary = {id: number; title: string; status: 'ready' | 'generating' | 'failed'; error: string};
 type Conversation = ChatSummary & {messages: Message[]};
 type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
@@ -12,6 +12,8 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
   const [id, setId] = useState<number | null>(null);
   const [chat, setChat] = useState<Conversation | null>(null);
   const [pages, setPages] = useState<PageSession[]>([]);
+  const [loadingImage,setLoadingImage]=useState(false);
+  const [image,setImage] = useState('');
   const [pageId, setPageId] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -59,7 +61,7 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
 
   function open(next: number | null) {
     requestVersion.current += 1;
-    setId(next);
+    setId(next); setLoadingImage(false); setImage('');
     setInput('');
     setPageId('');
     setError('');
@@ -69,17 +71,17 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
   }
 
   async function send() {
-    if (!input.trim() || sending || pending || awaitingHistory) return;
+    if (!input.trim() || loadingImage || sending || pending || awaitingHistory) return;
     const version = ++requestVersion.current;
     setSending(true);
     setError('');
     try {
       const path = id === null ? '/chats' : '/chats/' + id + '/messages';
-      const saved = await api<{id: number}>(path, 'POST', {content: input, browser_session: pageId || null});
+      const saved = await api<{id: number}>(path, 'POST', {content: input, browser_session: pageId || null, image:image || null});
       if (version === requestVersion.current) {
         setInput('');
         setPageId('');
-        setId(saved.id);
+        setImage(''); setId(saved.id);
       }
     } catch (err) {
       if (version === requestVersion.current) setError((err as Error).message);
@@ -123,6 +125,7 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
         {current?.messages.map(message => <article className={`chat-message ${message.role}`} key={message.id}>
           <strong>{message.role === 'user' ? 'You' : 'Open Agent'}</strong>
           <div className="chat-text">{message.content}</div>
+          {message.has_image && <img className="chat-image" loading="lazy" src={`/api/chats/${id}/messages/${message.id}/image`} alt="Attached image"/>}
           {message.browser_url && <p className="chat-status">Browser context · {message.browser_url}</p>}
           {message.role === 'assistant' && <button type="button" className="text-button" onClick={async () => {
             try {
@@ -145,14 +148,26 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
         <label htmlFor="chat-input">Message</label>
         <textarea id="chat-input" ref={composer} value={input} rows={3} maxLength={12000}
           placeholder="Message Open Agent…" onChange={event => setInput(event.target.value)} onKeyDown={handleKey} />
-        <div className="chat-actions">
+        {image && <div><img className="chat-image" src={image} alt="Image ready to send"/><button type="button" onClick={()=>setImage('')}>Remove image</button></div>}
+        <div className="chat-actions"><label className="attachment-button">Attach image<input type="file" disabled={loadingImage||sending} accept="image/png,image/jpeg,image/webp" onChange={e=>{
+          const file=e.target.files?.[0]; e.target.value='';
+          if(!file) return;
+          if(file.size>3000000){setError('Choose an image under 3 MB.');return;}
+          const version=requestVersion.current;
+          setLoadingImage(true);
+          const reader=new FileReader();
+          reader.onloadend=()=>{if(requestVersion.current===version)setLoadingImage(false)};
+          reader.onload=()=>{if(requestVersion.current===version)setImage(String(reader.result));};
+          reader.onerror=()=>setError('Could not read the image.');
+          reader.readAsDataURL(file);
+        }}/></label>
           {pages.length > 0 && <label className="chat-tool-label" htmlFor="chat-page">Attach browser context
             <select id="chat-page" value={pageId} onChange={event => setPageId(event.target.value)}>
               <option value="">None</option>
               {pages.map(item => <option key={item.id} value={item.id}>{item.title || item.url}</option>)}
             </select>
           </label>}
-          <button className="primary" disabled={!input.trim() || pending || sending || awaitingHistory}>
+          <button className="primary" disabled={!input.trim() || loadingImage || pending || sending || awaitingHistory}>
             Send
           </button>
         </div>

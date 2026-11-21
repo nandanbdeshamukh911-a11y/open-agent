@@ -39,6 +39,10 @@ def init():
         message_columns = {row['name'] for row in db.execute('PRAGMA table_info(chat_messages)')}
         if 'browser_context' not in message_columns:
             db.execute('ALTER TABLE chat_messages ADD COLUMN browser_context TEXT')
+        for key in ('checkpoint','source_project'):
+            if key not in columns: db.execute(f'ALTER TABLE tasks ADD COLUMN {key} TEXT')
+        if 'image' not in message_columns: db.execute('ALTER TABLE chat_messages ADD COLUMN image TEXT')
+        db.execute('CREATE TABLE IF NOT EXISTS check_rules(project TEXT,args TEXT,PRIMARY KEY(project,args))')
         # An operation interrupted mid-flight cannot safely be replayed automatically.
         db.execute("UPDATE approvals SET status='interrupted', result='The app stopped during this action. Inspect the workspace before retrying.' WHERE status='executing'")
         db.execute("UPDATE tasks SET status='paused' WHERE status='running'")

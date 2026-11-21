@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
-from . import agent, browser, browser_api, chat, store, tools
+from . import worktrees, verifier, checks, integrations, agent, browser, browser_api, chat, store, tools
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -41,12 +41,14 @@ async def local_only(request: Request, call_next):
     return await call_next(request)
 
 class NewTask(BaseModel):
+    isolated: bool = False
     request: str = Field(min_length=1,max_length=20000)
     project: str = Field(min_length=1,max_length=2000)
     max_retries: int = Field(default=3,ge=0,le=10)
 class Message(BaseModel):
     content: str = Field(min_length=1,max_length=20000)
 class Decision(BaseModel):
+    remember: bool = False
     approved: bool
 class Memory(BaseModel):
     content: str = Field(min_length=1,max_length=5000)
@@ -99,7 +101,12 @@ def tasks(): return store.query('SELECT * FROM tasks ORDER BY id DESC LIMIT 100'
 def new_task(body: NewTask):
     project = Path(body.project).expanduser().resolve()
     if not project.is_dir(): raise HTTPException(400,'Select an existing project directory.')
-    tid = store.execute("INSERT INTO tasks(request,project,status,max_retries) VALUES(?,?,'running',?)",(body.request,str(project),body.max_retries))
+    source = str(project)
+    checkpoint = None
+    if body.isolated:
+        try: project,checkpoint = worktrees.create(project)
+        except (OSError,ValueError,subprocess.SubprocessError) as exc: raise HTTPException(400,str(exc)) from exc
+    tid = store.execute("INSERT INTO tasks(request,project,status,max_retries,source_project,checkpoint) VALUES(?,?,'running',?,?,?)",(body.request,str(project),body.max_retries,source,checkpoint))
     agent.remember_explicit_preferences(body.request)
     store.event(tid,'user',body.request); agent.start(tid)
     return {'id':tid}
@@ -124,6 +131,72 @@ def task_message(task_id: int, body: Message):
     # Include clarifications in future prompts as evidence, then resume.
     store.update(task_id,status='running',final=''); agent.start(task_id)
     return {'ok':True}
+
+@app.post('/api/tasks/{task_id}/restore')
+def restore(task_id:int):
+    with store.lock:
+        row = store.query('SELECT * FROM tasks WHERE id=?',(task_id,),True)
+        if not row or not row['checkpoint']: raise HTTPException(409,'This task has no worktree checkpoint.')
+        if row['status'] not in ('paused','blocked','completed','cancelled') or store.query("SELECT id FROM approvals WHERE task_id=? AND status IN ('pending','executing','interrupted')",(task_id,)):
+            raise HTTPException(409,'Resolve approvals and stop the task before restoring.')
+        try: fresh,_ = worktrees.create(row['source_project'],row['checkpoint'])
+        except (OSError, ValueError, subprocess.SubprocessError) as exc: raise HTTPException(409,str(exc)) from exc
+        store.event(task_id,'checkpoint_restore',{'previous_workspace':row['project'],'restored_workspace':fresh,'commit':row['checkpoint']})
+        store.update(task_id,project=fresh,status='cancelled',final='Restored the starting commit in a fresh worktree. Previous changes are retained in the recorded workspace.')
+    return {'project':fresh}
+
+
+@app.get('/api/tasks/{task_id}/checks')
+def verification_checks(task_id:int):
+    row = store.query('SELECT project FROM tasks WHERE id=?',(task_id,),True)
+    if not row: raise HTTPException(404,'Unknown task.')
+    root = Path(row['project'])
+    return [{'check':name,**checks.recipe(root,name)} for name in checks.discover(root)['checks']]
+
+
+@app.post('/api/tasks/{task_id}/verify')
+def parallel_verify(task_id:int, body:dict):
+    row = store.query('SELECT * FROM tasks WHERE id=?',(task_id,),True)
+    if not row: raise HTTPException(404,'Unknown task.')
+    try:
+        name = body.get('check','')
+        if body != {'check':name,**checks.recipe(Path(row['project']),name)}: raise ValueError('Check changed. Refresh available checks.')
+        verifier.start(row,body)
+    except (ValueError,OSError) as exc: raise HTTPException(409,str(exc)) from exc
+    return {'ok':True}
+
+
+class EngineeringSettings(BaseModel):
+    work_model:str = Field(max_length=200)
+    planning_model:str = Field(max_length=200)
+    python_lsp:bool
+    mcp_servers:dict[str,str]
+
+
+@app.get('/api/engineering')
+def engineering():
+    return {'work_model':agent.setting('work_model',''),'planning_model':agent.setting('planning_model',''),
+        'python_lsp':agent.setting('python_lsp','0')=='1','mcp_servers':integrations.servers(),
+        'rules':store.query('SELECT rowid AS id,project,args FROM check_rules')}
+
+
+@app.put('/api/engineering')
+def configure(body:EngineeringSettings):
+    for name,url in body.mcp_servers.items():
+        u=urllib.parse.urlsplit(url)
+        if not name.strip() or not u.hostname or u.username or u.password or u.query or u.fragment or not (u.scheme=='https' or u.scheme=='http' and u.hostname in ('localhost','127.0.0.1','::1')):
+            raise HTTPException(422,'Choose a named HTTPS endpoint or local HTTP MCP endpoint without embedded credentials.')
+    with store.lock,store.connect() as db:
+        for k,v in [('work_model',body.work_model),('planning_model',body.planning_model),('python_lsp',str(int(body.python_lsp))),('mcp_servers',json.dumps(body.mcp_servers))]:
+            db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(k,v))
+    return {'ok':True}
+
+
+@app.delete('/api/check-rules/{rule_id}')
+def revoke(rule_id:int):
+    store.execute('DELETE FROM check_rules WHERE rowid=?',(rule_id,))
+    return {'ok':True}
+
 
 @app.post('/api/tasks/{task_id}/{operation}')
 def control(task_id: int, operation: str):
@@ -159,7 +232,7 @@ def approvals():
 
 @app.post('/api/approvals/{approval_id}/decide')
 def decide(approval_id: int, body: Decision):
-    try: agent.resolve_approval(approval_id,body.approved)
+    try: agent.resolve_approval(approval_id,body.approved,body.remember)
     except ValueError as e: raise HTTPException(409,str(e))
     return {'ok':True}
 

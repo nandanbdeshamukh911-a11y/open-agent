@@ -14,6 +14,9 @@ from . import checks, store
 MAX_OUTPUT = 30000
 MAX_FILE_BYTES = 2_000_000
 PROJECT_CATALOG = [
+    {'name':'Repository code map','description':'Rank matching Python, JavaScript, JSX, TypeScript and TSX files using Tree-sitter symbols and a local full-text index.'},
+    {'name':'MCP client','description':'Connect a Streamable HTTP server in Settings. Inspect and approve the endpoint, tool and arguments before each request.'},
+    {'name':'Python diagnostics','description':'Enable Python LSP in Settings to record line-level diagnostics after approved Python file edits.'},
     {'name': 'Frontend designer', 'description': 'Generate an editable editorial page from a short brief, with responsive typography, keyboard-accessible disclosures and offline Anime.js motion. Review the HTML before creation.'},
     {'name': 'Read and search files', 'description': 'Read selected lines and find exact text in the project.'},
     {'name': 'Git status and diff', 'description': 'Review staged and unstaged changes using fixed Git commands with approval.'},

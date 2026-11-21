@@ -1,16 +1,17 @@
+import asyncio
 import hashlib
 import json
 import re
 import threading
 import urllib.parse
 import httpx
-from . import browser, checks as project_checks, design, store, tools
+from . import codemap, integrations, browser, checks as project_checks, design, store, tools
 
 workers = set()
 worker_lock = threading.Lock()
 epochs = {}
-READ_ACTIONS = {'read_file','list_files','search','project_checks','browser_inspect','browser_assert','browser_layout'}
-APPROVAL_ACTIONS = {'write_file','replace_text','design_page','git_status','git_diff','command','download_skill','run_check'} | browser.BROWSER_ACTIONS
+READ_ACTIONS = {'code_map','read_file','list_files','search','project_checks','browser_inspect','browser_assert','browser_layout'}
+APPROVAL_ACTIONS = {'mcp','write_file','replace_text','design_page','git_status','git_diff','command','download_skill','run_check'} | browser.BROWSER_ACTIONS
 
 def setting(key, default):
     row = store.query('SELECT value FROM settings WHERE key=?',(key,),True)
@@ -21,12 +22,12 @@ def preferred_model(names):
         return 'ornith-1.5:9b'
     return next((name for name in names if 'gpt-oss' in name.lower()), '')
 
-def model_call(messages, *, structured=True):
+def model_call(messages, *, structured=True, model_override=None):
     url = setting('model_url','http://127.0.0.1:11434/v1').rstrip('/')
     p = urllib.parse.urlparse(url)
     if p.scheme != 'http' or p.hostname not in ('localhost','127.0.0.1','::1') or p.username or p.password:
         raise ValueError('Model URL must be a local HTTP endpoint.')
-    model = setting('model_name','')
+    model = model_override or setting('model_name','')
     if not model:
         models = httpx.get(url + '/models',timeout=5,trust_env=False).json().get('data',[])
         model = preferred_model([m['id'] for m in models])
@@ -126,7 +127,21 @@ def prompt(task):
         instruction = 'Independently check the draft final response against the original user request, requirement review, and recorded evidence. Check that it accurately explains changes, verification and any gaps, and does not claim unsupported success. Return {"verdict":"pass"|"repair"|"blocked", "summary":"the corrected final response addressed directly to the user", "repair":"specific unmet requirement, if any"}. In summary, report the actual result to the user; do not describe your review of the draft. Choose repair if actual work or evidence is missing. If only the wording needs correction, correct summary and choose pass.'
     else:
         instruction = 'Choose the next small action. Return {"action":"one of the available actions or review or clarify", "args":{}, "reason":"why"}. Use review only when implementation and relevant checks are done. For clarification use args.question. Do not write or execute without proposing the action.'
-    system = SYSTEM
+    older = store.query("SELECT id,kind,substr(content,1,900) AS content FROM events WHERE task_id=? AND id<? AND kind IN ('user','repair_requested','review','error','parallel_review') ORDER BY id DESC LIMIT 8",
+                        (task['id'],events[-1]['id'] if events else 0))
+    if len(events)==24:
+        archive = store.query("""SELECT max(id) AS id, count(*) AS count,json_extract(content,'$.action') AS action,
+            substr(json_extract(content,'$.result'),1,160) AS excerpt FROM events WHERE task_id=? AND id<? AND kind='tool' AND json_valid(content)
+            GROUP BY action ORDER BY id DESC LIMIT 12""",(task['id'],events[-1]['id']))
+        if archive:
+            context += '\nEarlier tool evidence (latest result per tool):\n' + '\n'.join(
+                f"#{row['id']} {row['action']} ({row['count']} calls): {row['excerpt']}" for row in archive)
+    if older:
+        context += '\nEarlier decisions and repairs (abridged):\n' + '\n'.join(f"#{e['id']} {e['kind']}: {e['content'][:320]}" for e in reversed(older))
+    system = SYSTEM + ' Use code_map {query} for the five highest-ranked matching source files and symbols.'
+    endpoints = integrations.servers()
+    if endpoints:
+        system += ' MCP servers: '+json.dumps(list(endpoints))+'. Propose mcp {server} to list tools, then mcp {server,tool,arguments}. Each connection or call requires approval.'
     if re.search(r'\b(website|webpage|landing|portfolio|frontend|front.end|design|responsive|anime\.?js|html|site)\b', task['request'], re.I):
         system += (' For a new editorial landing page, portfolio or programme, use design_page '
                    '{path:"index.html",brand,headline,intro,section,palette:"cobalt"|"forest"|"plum",layout:"programme"|"catalogue",'
@@ -354,7 +369,8 @@ def loop(task_id, epoch):
             task = store.query('SELECT * FROM tasks WHERE id=?',(task_id,),True)
             if not task or task['status'] != 'running': return
             try:
-                raw = model_call(prompt(task))
+                route = setting('work_model' if task['phase']=='work' else 'planning_model','')
+                raw = model_call(prompt(task), model_override=route) if route else model_call(prompt(task))
                 try:
                     result = parse_json(raw)
                     problem = validate_response(task['phase'],result)
@@ -432,6 +448,12 @@ def loop(task_id, epoch):
                     except Exception as e: output = 'Error: ' + str(e)
                     store.event(task_id,'tool',{'action':action,'args':args,'result':output}); continue
                 if action in APPROVAL_ACTIONS:
+                    if action == 'mcp':
+                        endpoint = integrations.servers().get(str(args.get('server')))
+                        if not endpoint or not isinstance(args.get('arguments',{}),dict):
+                            store.event(task_id,'tool',{'action':action,'args':{},'result':'Error: select a configured server and an arguments object.'})
+                            continue
+                        args = {'server':args['server'],'url':endpoint,'tool':args.get('tool'),'arguments':args.get('arguments',{})}
                     if action == 'design_page':
                         try:
                             path = args.get('path', 'index.html')
@@ -493,8 +515,12 @@ def loop(task_id, epoch):
                     with store.lock, store.connect() as db:
                         state = db.execute('SELECT status FROM tasks WHERE id=?',(task_id,)).fetchone()
                         if not state or state['status'] != 'running' or epochs.get(task_id,0) != epoch: return
-                        db.execute('INSERT INTO approvals(task_id,action,args) VALUES(?,?,?)',(task_id,action,json.dumps(args)))
+                        proposal = db.execute('INSERT INTO approvals(task_id,action,args) VALUES(?,?,?)',(task_id,action,json.dumps(args)))
                         db.execute("UPDATE tasks SET status='waiting_approval' WHERE id=?",(task_id,))
+                        approval_id = proposal.lastrowid
+                        automatic = action=='run_check' and db.execute('SELECT 1 FROM check_rules WHERE project=? AND args=?',(task['project'],json.dumps(args,sort_keys=True))).fetchone()
+                    if automatic:
+                        resolve_approval(approval_id, True, automatic=True)
                     return
                 raise ValueError('Unknown action: ' + str(action))
             except Exception as e:
@@ -517,6 +543,8 @@ def project_document(task, args):
 
 
 def task_action(action, args, task):
+    if action == 'mcp': return asyncio.run(integrations.mcp_request(args))
+    if action == 'code_map': return codemap.search(task['project'],args.get('query',''))
     if action in browser.BROWSER_ACTIONS or action in ('browser_inspect','browser_assert','browser_layout'):
         if action == 'browser_project':
             document = project_document(task, args)
@@ -540,7 +568,7 @@ def task_action(action, args, task):
     return tools.run(action, args, task['project'] if task else None)
 
 
-def resolve_approval(approval_id, approved):
+def resolve_approval(approval_id, approved, remember=False, automatic=False):
     with store.lock, store.connect() as db:
         row = db.execute('SELECT * FROM approvals WHERE id=?',(approval_id,)).fetchone()
         if not row or row['status'] != 'pending': raise ValueError('Approval is no longer pending.')
@@ -548,6 +576,11 @@ def resolve_approval(approval_id, approved):
         if row['task_id']:
             task = db.execute('SELECT * FROM tasks WHERE id=?',(row['task_id'],)).fetchone()
             if not task or task['status'] != 'waiting_approval': raise ValueError('Task is not waiting for this approval.')
+        if automatic and not db.execute('SELECT 1 FROM check_rules WHERE project=? AND args=?',(task['project'],json.dumps(json.loads(row['args']),sort_keys=True))).fetchone():
+            return
+        if remember:
+            if not approved or row['action']!='run_check': raise ValueError('Only a named project check can be remembered.')
+            db.execute('INSERT OR IGNORE INTO check_rules VALUES(?,?)',(task['project'],json.dumps(json.loads(row['args']),sort_keys=True)))
         db.execute('UPDATE approvals SET status=? WHERE id=?',('executing' if approved else 'denied',approval_id))
         if not approved and row['task_id']:
             db.execute("UPDATE tasks SET status='blocked',final='Action denied by the user.' WHERE id=?",(row['task_id'],))
@@ -558,6 +591,12 @@ def resolve_approval(approval_id, approved):
         try:
             task = store.query('SELECT * FROM tasks WHERE id=?',(row['task_id'],),True) if row['task_id'] else None
             result = task_action(row['action'],json.loads(row['args']),task)
+            if row['action'] in ('write_file','replace_text') and setting('python_lsp','0')=='1':
+                path = json.loads(row['args'])['path']
+                if path.endswith('.py'):
+                    try: feedback = asyncio.run(integrations.diagnostics(task['project'],path))
+                    except Exception as exc: feedback = 'Diagnostics unavailable: '+str(exc)
+                    store.event(task['id'],'tool',{'action':'python_lsp','args':{'path':path},'result':feedback})
             status = 'done'
         except Exception as e: result, status = 'Error: '+str(e), 'failed'
         store.execute('UPDATE approvals SET status=?,result=? WHERE id=?',(status,result,approval_id))
