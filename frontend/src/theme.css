@@ -1,0 +1,13 @@
+:root { color-scheme:light dark; }
+:root[data-theme=light] { color-scheme:light; }
+:root[data-theme=dark] { color-scheme:dark; }
+.header-tools { display:flex; align-items:center; flex-wrap:wrap; justify-content:end; gap:12px; }
+.theme-picker { display:grid; gap:4px; }
+.theme-picker select { font:inherit; padding:.45rem; border:1px solid light-dark(#ccd6cd,#526558); border-radius:6px; background:light-dark(#fff,#202b25); color:light-dark(#28342c,#e7efe9); }
+:focus-visible { outline:2px solid light-dark(#37754f,#9fd9ad); outline-offset:2px; }
+.review-panel { margin-block:1.25rem; }
+.review-title { display:flex; justify-content:space-between; align-items:center; gap:.6rem; }
+.review-panel ul { padding-left:1.3rem; font-size:.85rem; line-height:1.6; }
+.review-panel a { color:light-dark(#315e4c,#a0dfb1); }
+.review-panel select { margin:.6rem; padding:.35rem; }
+.review-panel details:target { outline:2px solid light-dark(#48825e,#87bd99); }

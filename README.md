@@ -63,3 +63,9 @@ The integrated browser is designed for development previews and public reference
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch workflow and checks. Set `OPEN_AGENT_TEST_BROWSER=1` to run the local browser fixture alongside the regular test suite. The optional `python tests/live_smoke.py` run exercises an isolated task against your configured local model. Its test harness approves only the expected fixture write.
 
 Open Agent is distributed under the [MIT license](LICENSE).
+
+### Appearance and task evidence
+
+Use **Appearance** in the page header to follow the system theme or save a light or dark preference in the current browser. The integrated browser keeps the previewed site's own colours.
+
+In **Workspace**, select a task to inspect its latest model review, follow a citation to the recorded tool result, or filter results by tool. **Export report** downloads a JSON snapshot of the request, task status, file actions, model checks and tool results. Review the file before sharing because tool results can contain project source and command output.

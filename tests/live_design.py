@@ -40,7 +40,10 @@ with TestClient(app, base_url='http://127.0.0.1:8765', headers={'X-Open-Agent':'
             else:
                 print(event['kind'], event['content'][:400], flush=True)
         if task['status'] == 'waiting_approval':
-            approval = next(a for a in task['approvals'] if a['status'] == 'pending')
+            approval = next((a for a in task['approvals'] if a['status'] == 'pending'), None)
+            if approval is None:  # The approved action is still executing.
+                time.sleep(.2)
+                continue
             args = json.loads(approval['args'])
             allowed = approval['action'] in ('design_page','browser_project') and args.get('path') == 'index.html'
             client.post(f"/api/approvals/{approval['id']}/decide", json={'approved':allowed}).raise_for_status()
