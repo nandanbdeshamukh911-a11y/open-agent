@@ -41,6 +41,10 @@ def model_call(messages, *, structured=True):
         # Some compatible runtimes do not support these optional fields.
         payload.pop('reasoning_effort', None); payload.pop('response_format', None)
         response = httpx.post(url + '/chat/completions', json=payload, timeout=600, trust_env=False)
+    if structured and response.status_code in (500, 503):
+        # Retry inference only. No tool has run for this step.
+        payload['max_tokens'] = 768
+        response = httpx.post(url + '/chat/completions', json=payload, timeout=600, trust_env=False)
     response.raise_for_status()
     choice = response.json()['choices'][0]
     message = choice['message']

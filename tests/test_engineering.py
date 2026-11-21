@@ -75,3 +75,17 @@ def test_importing_app_does_not_run_task_recovery(app, tmp_path):
     task_id = store.execute("INSERT INTO tasks(request,project,status) VALUES(?,?,'running')", ('Fixture', str(tmp_path)))
     subprocess.run([sys.executable, '-c', 'import backend.main'], check=True, timeout=15)
     assert store.query('SELECT status FROM tasks WHERE id=?', (task_id,), True)['status'] == 'running'
+
+def test_transient_model_failure_retries_only_inference(app, monkeypatch):
+    import httpx
+    _, agent, store = app
+    store.execute("INSERT OR REPLACE INTO settings(key,value) VALUES('model_name','ornith-1.5:9b')")
+    budgets = []
+    def respond(url, *, json, **kwargs):
+        budgets.append(json['max_tokens'])
+        payload = {'choices':[{'message':{'content':'{}'}}]}
+        return httpx.Response(503 if len(budgets)==1 else 200, json=payload, request=httpx.Request('POST',url))
+    monkeypatch.setattr(agent.httpx, 'post', respond)
+    assert agent.model_call([{'role':'user','content':'Plan'}]) == '{}'
+    assert budgets == [4096, 768]
+    assert not store.query('SELECT id FROM approvals')
