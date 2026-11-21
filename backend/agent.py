@@ -467,9 +467,13 @@ def loop(task_id, epoch):
                             store.event(task_id, 'tool', {'action':action,'args':args,'result':f'Error: {exc}'})
                             continue
                     if action == 'write_file':
-                        target = tools.workspace_path(task['project'],args['path'])
                         content = args.get('content')
-                        if not isinstance(content,str): raise ValueError('write_file content must be text.')
+                        try:
+                            target = tools.workspace_path(task['project'],args.get('path'))
+                            if not isinstance(content,str): raise ValueError('write_file requires path and complete text content.')
+                        except (ValueError, OSError) as exc:
+                            store.event(task_id,'tool',{'action':action,'args':{},'result':f'Error: {exc}. Supply path and content, or use design_page for a new editorial page.'})
+                            continue
                         encoded = content.encode('utf-8')
                         if target.is_file() and target.stat().st_size == len(encoded) and target.read_bytes() == encoded:
                             result = 'No change needed: the file already contains the proposed content. Verify the requirement or choose another step.'
