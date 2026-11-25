@@ -169,6 +169,7 @@ def parallel_verify(task_id:int, body:dict):
 class EngineeringSettings(BaseModel):
     work_model:str = Field(max_length=200)
     planning_model:str = Field(max_length=200)
+    typescript_lsp:bool = False
     python_lsp:bool
     mcp_servers:dict[str,str]
 
@@ -176,7 +177,7 @@ class EngineeringSettings(BaseModel):
 @app.get('/api/engineering')
 def engineering():
     return {'work_model':agent.setting('work_model',''),'planning_model':agent.setting('planning_model',''),
-        'python_lsp':agent.setting('python_lsp','0')=='1','mcp_servers':integrations.servers(),
+        'typescript_lsp':agent.setting('typescript_lsp','0')=='1','python_lsp':agent.setting('python_lsp','0')=='1','mcp_servers':integrations.servers(),
         'rules':store.query('SELECT rowid AS id,project,args FROM check_rules')}
 
 
@@ -187,7 +188,7 @@ def configure(body:EngineeringSettings):
         if not name.strip() or not u.hostname or u.username or u.password or u.query or u.fragment or not (u.scheme=='https' or u.scheme=='http' and u.hostname in ('localhost','127.0.0.1','::1')):
             raise HTTPException(422,'Choose a named HTTPS endpoint or local HTTP MCP endpoint without embedded credentials.')
     with store.lock,store.connect() as db:
-        for k,v in [('work_model',body.work_model),('planning_model',body.planning_model),('python_lsp',str(int(body.python_lsp))),('mcp_servers',json.dumps(body.mcp_servers))]:
+        for k,v in [('work_model',body.work_model),('planning_model',body.planning_model),('typescript_lsp',str(int(body.typescript_lsp))),('python_lsp',str(int(body.python_lsp))),('mcp_servers',json.dumps(body.mcp_servers))]:
             db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',(k,v))
     return {'ok':True}
 

@@ -136,3 +136,44 @@ def test_named_check_permission_reuse_and_revocation(app,tmp_path,monkeypatch):
     rule=client.get('/api/engineering').json()['rules'][0]
     client.delete(f"/api/check-rules/{rule['id']}").raise_for_status()
     assert not client.get('/api/engineering').json()['rules']
+
+def test_typescript_lsp_reports_type_error(tmp_path):
+    (tmp_path/'tsconfig.json').write_text('{"compilerOptions":{"strict":true}}')
+    (tmp_path/'bad.ts').write_text('const total: number = "hello";\n')
+    result=asyncio.run(integrations.diagnostics(tmp_path,'bad.ts'))
+    assert 'not assignable' in result
+
+
+def test_approved_edit_returns_language_diagnostics_to_agent(app, tmp_path, monkeypatch):
+    client, agent, store = app
+    project = tmp_path / 'project'
+    project.mkdir()
+    file = project / 'example.py'
+    file.write_text('print("ready")\n', encoding='utf-8')
+    client.put('/api/engineering', json={
+        'work_model': '', 'planning_model': '', 'python_lsp': True, 'mcp_servers': {},
+    }).raise_for_status()
+    replies = iter([
+        {'action': 'replace_text', 'args': {'path': file.name, 'old_text': 'print("ready")', 'new_text': 'print(missing_name)'}},
+        {'action': 'clarify', 'args': {'question': 'What should the name be?'}},
+    ])
+    inputs = []
+
+    def model(messages):
+        inputs.extend(message['content'] for message in messages)
+        return json.dumps(next(replies))
+
+    monkeypatch.setattr(agent, 'model_call', model)
+    tid = store.execute(
+        "INSERT INTO tasks(request,project,status,phase) VALUES(?,?,'paused','work')",
+        ('Edit the example', str(project)),
+    )
+    client.post(f'/api/tasks/{tid}/resume').raise_for_status()
+    approval = wait_for(lambda: store.query("SELECT id FROM approvals WHERE status='pending'", one=True))
+    assert 'ready' in file.read_text(encoding='utf-8')
+    client.post(f"/api/approvals/{approval['id']}/decide", json={'approved': True}).raise_for_status()
+    wait_for(lambda: store.query('SELECT status FROM tasks WHERE id=?', (tid,), True)['status'] == 'blocked')
+    payload = next(json.loads(event['content']) for event in store.query("SELECT content FROM events WHERE kind='tool'")
+                   if 'python_lsp' in event['content'])
+    assert 'undefined name' in payload['result'].lower()
+    assert any(payload['result'] in message for message in inputs)

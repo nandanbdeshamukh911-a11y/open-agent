@@ -591,12 +591,13 @@ def resolve_approval(approval_id, approved, remember=False, automatic=False):
         try:
             task = store.query('SELECT * FROM tasks WHERE id=?',(row['task_id'],),True) if row['task_id'] else None
             result = task_action(row['action'],json.loads(row['args']),task)
-            if row['action'] in ('write_file','replace_text') and setting('python_lsp','0')=='1':
+            if row['action'] in ('write_file','replace_text'):
                 path = json.loads(row['args'])['path']
-                if path.endswith('.py'):
+                language = 'python' if path.lower().endswith('.py') else 'typescript' if path.lower().endswith(('.ts','.tsx','.js','.jsx')) else ''
+                if language and setting(language+'_lsp','0')=='1':
                     try: feedback = asyncio.run(integrations.diagnostics(task['project'],path))
-                    except Exception as exc: feedback = 'Diagnostics unavailable: '+str(exc)
-                    store.event(task['id'],'tool',{'action':'python_lsp','args':{'path':path},'result':feedback})
+                    except Exception as exc: feedback = 'Error: diagnostics unavailable: '+str(exc)
+                    store.event(task['id'],'tool',{'action':language+'_lsp','args':{'path':path},'result':feedback})
             status = 'done'
         except Exception as e: result, status = 'Error: '+str(e), 'failed'
         store.execute('UPDATE approvals SET status=?,result=? WHERE id=?',(status,result,approval_id))
