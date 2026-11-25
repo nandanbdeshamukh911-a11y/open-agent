@@ -1,4 +1,4 @@
-import { ArrowUp, Check, Copy, Globe2, MessageSquare, Monitor, SquareTerminal, X } from 'lucide-react';
+import { ArrowUp, Check, Code2, Copy, Globe2, Layers3, ListTree, Monitor, PanelsTopLeft, SquareTerminal, X } from 'lucide-react';
 import { FormEvent, KeyboardEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AttachmentMenu, { imageTypes, PageSession } from './AttachmentMenu';
@@ -6,6 +6,11 @@ import SitePreview from './SitePreview';
 import './chat.css';
 
 const MessageBody = lazy(() => import('./MessageBody'));
+const starters = [
+  {label: 'Plan a feature', icon: ListTree, prompt: 'Help me plan this feature: '},
+  {label: 'Review code', icon: Code2, prompt: 'Review this code and explain what I could improve:\n\n'},
+  {label: 'Design a page', icon: PanelsTopLeft, prompt: 'Design a standalone HTML page with a live preview for '},
+];
 
 type Message = {
   id: number; role: 'user' | 'assistant'; content: string;
@@ -200,14 +205,13 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
       history.length ? history.map(item => <button type="button" key={item.id}
         className="conversation-item" aria-current={visible && item.id === id ? 'page' : undefined}
         onClick={() => open(item.id)} title={item.title}>
-        <MessageSquare size={15} aria-hidden="true"/><span>{item.title}</span>
+        <span>{item.title}</span>
       </button>) : <p className="conversation-empty">No saved chats</p>, historyTarget,
     )}
     <div className={preview ? 'chat-surface chat-with-preview' : 'chat-surface'} hidden={!visible}>
     <div className={id === null ? 'chat-panel chat-start' : 'chat-panel'}>
       {id === null ? <section className="chat-intro">
-        <h2>What are you working on?</h2>
-        <p>Ask a question, share an image, or talk through a change before opening a coding task.</p>
+        <h2>Where should we start?</h2>
       </section> : <div className="chat-transcript" ref={transcript} aria-label="Conversation"
         onScroll={event => {
           const viewport = event.currentTarget;
@@ -216,12 +220,15 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
         <div className="chat-thread">
           {awaitingHistory && <p className="chat-status" role="status">Loading conversation…</p>}
           {current?.messages.map(message => <article className={`chat-message ${message.role}`} key={message.id}>
-            <strong>{message.role === 'user' ? 'You' : 'Open Agent'}</strong>
+            {message.role === 'user' ? <span className="sr-only">You</span> :
+              <div className="reply-author"><Layers3 size={16} aria-hidden="true"/>Open Agent</div>}
             {Boolean(message.has_image) && <img className="chat-image" loading="lazy" src={`/api/chats/${id}/messages/${message.id}/image`} alt="Attached image"/>}
             {message.role === 'assistant' ? <Suspense fallback={null}>
               <MessageBody content={message.content}/>
             </Suspense> : <div className="chat-text">{message.content}</div>}
             {message.browser_url && <p className="chat-status"><Globe2 size={13} aria-hidden="true"/> {message.browser_url}</p>}
+            {message === lastUserMessage && !message.content.startsWith('/') && <button type="button" className="chat-handoff"
+              onClick={() => onCode(message.content)}><SquareTerminal size={14} aria-hidden="true"/> Open in workspace</button>}
             {message.html_preview && latestPage && <button type="button" className="text-button"
               aria-pressed={selectedPreviewId === message.id}
               onClick={() => setPreviewChoice({latest: latestPage.id, chosen: message.id})}>
@@ -260,8 +267,10 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
               <button type="button" className="icon-button" onClick={() => setPageId('')} aria-label="Remove browser preview"><X size={16}/></button>
             </div>}
           </div>}
-          <textarea aria-label="Message" ref={composer} value={input} rows={2} maxLength={12000}
-            placeholder="Write a message…" onChange={event => setInput(event.target.value)} onKeyDown={handleKey}
+          <AttachmentMenu pages={pages} disabled={!!busy} onImage={attachImage} onPage={setPageId}
+            onOpen={() => {void api<PageSession[]>('/browser/sessions').then(setPages).catch(() => setPages([]));}}/>
+          <textarea aria-label="Message" ref={composer} value={input} rows={1} maxLength={12000}
+            placeholder="Message Open Agent" onChange={event => setInput(event.target.value)} onKeyDown={handleKey}
             onPaste={event => {
               const file = Array.from(event.clipboardData.files).find(item => imageTypes.includes(item.type));
               if (file && !busy) {
@@ -269,19 +278,17 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
                 attachImage(file);
               }
             }}/>
-          <div className="chat-actions">
-            <AttachmentMenu pages={pages} disabled={!!busy} onImage={attachImage} onPage={setPageId}
-              onOpen={() => {void api<PageSession[]>('/browser/sessions').then(setPages).catch(() => setPages([]));}}/>
-            {loadingImage && <span role="status" className="chat-status">Reading image…</span>}
-            {sending && !pending && <LoadingDots/>}
             <button type="submit" className="icon-button send-button" aria-label="Send message" title="Send message"
               disabled={!input.trim() || !!busy}><ArrowUp size={21} aria-hidden="true"/></button>
-          </div>
         </form>
-        {lastUserMessage && !lastUserMessage.content.startsWith('/') && <button type="button" className="chat-handoff"
-          onClick={() => onCode(lastUserMessage.content)}>
-          <SquareTerminal size={16} aria-hidden="true"/> Use last message in a coding task
-        </button>}
+        {loadingImage && <span role="status" className="chat-status">Reading image…</span>}
+        {sending && !pending && <LoadingDots/>}
+        {id === null && !input && !sending && <div className="chat-starters" role="group" aria-label="Draft a prompt">
+          {starters.map(({label, icon: Icon, prompt}) => <button key={label} type="button" onClick={() => {
+            setInput(prompt);
+            composer.current?.focus();
+          }}><Icon size={15} aria-hidden="true"/>{label}</button>)}
+        </div>}
       </div>
     </div>
     {visible && id !== null && latestPage && selectedPreviewId && preview &&

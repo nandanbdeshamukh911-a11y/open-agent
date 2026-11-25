@@ -68,7 +68,7 @@ Open Agent is distributed under the [MIT license](LICENSE).
 
 ### Appearance and task evidence
 
-Use **Settings → Appearance** to follow the system theme or save a light or dark preference in the current browser. The integrated browser keeps the previewed site's own colours.
+Open Agent starts in charcoal dark mode. Choose **Settings → Appearance** for Light, Dark, or System. Your choice is saved in this browser. Website previews use the site's own colours. On desktop, use the sidebar toggle beside the Open Agent name to give a conversation and its preview more room.
 
 In **Workspace**, select a task to inspect its latest model review, follow a citation to the recorded tool result, or filter results by tool. **Export report** downloads a JSON snapshot of the request, task status, file actions, model checks and tool results. Review the file before sharing because tool results can contain project source and command output.
 

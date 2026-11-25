@@ -1,8 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import { Archive, ChevronDown, CircleAlert, CircleCheck, Globe2, Layers3, Menu, MessageSquare, Plus, Settings2, ShieldCheck, Wrench, X } from 'lucide-react';
+import { Archive, ChevronDown, CircleAlert, CircleCheck, Globe2, Layers3, Menu, MessageSquare, PanelLeftClose, PanelLeftOpen, SquarePen, Settings2, ShieldCheck, Wrench, X } from 'lucide-react';
 import '@fontsource-variable/inter';
-import '@fontsource/instrument-serif';
 import Chat from './Chat';
 import Browser from './Browser';
 import './style.css';
@@ -21,7 +20,6 @@ const navigation = [
   {name:'Approvals', icon:ShieldCheck},
   {name:'Memory', icon:Archive},
   {name:'Tools', icon:Wrench},
-  {name:'Settings', icon:Settings2},
 ];
 
 const descriptions: Record<string, string> = {
@@ -34,6 +32,7 @@ const descriptions: Record<string, string> = {
 };
 
 function App(){
+  const [railHidden,setRailHidden] = useState(false);
   const [chatVersion,setChatVersion] = useState(0);
   const [mobileNavOpen,setMobileNavOpen] = useState(false);
   const mobileMenu = useRef<HTMLButtonElement>(null);
@@ -75,20 +74,27 @@ function App(){
     setMobileNavOpen(false);
     if (mobileNavOpen) mainContent.current?.focus({preventScroll:true});
   }
-  return <div className="app">
+  return <div className={railHidden ? 'app rail-hidden' : 'app'}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <aside className={'sidebar'+(mobileNavOpen?' mobile-open':'')} onKeyDown={event=>{
       if(event.key==='Escape' && mobileNavOpen) {setMobileNavOpen(false);mobileMenu.current?.focus();}
     }}>
-      <div className="brand"><span className="brand-icon" aria-hidden="true"><Layers3 size={22}/></span><strong>Open Agent</strong></div>
+      <div className="brand"><span className="brand-icon" aria-hidden="true"><Layers3 size={20}/></span><strong>Open Agent</strong>
+        <button className="icon-button rail-toggle" type="button" aria-label="Hide sidebar" title="Hide sidebar"
+          onClick={()=>{setRailHidden(true); requestAnimationFrame(()=>document.getElementById('show-sidebar')?.focus())}}><PanelLeftClose size={17}/></button>
+      </div>
       <button type="button" className="new-chat" onClick={()=>{setChatVersion(version=>version+1);navigate('Chat')}}>
-        <Plus size={18} aria-hidden="true"/> New chat
+        <SquarePen size={17} aria-hidden="true"/> New chat
       </button>
       <button type="button" className="icon-button mobile-nav-toggle" ref={mobileMenu} aria-label="Workspace menu"
         aria-expanded={mobileNavOpen} aria-controls="sidebar-links" onClick={()=>setMobileNavOpen(open=>!open)}>
         {mobileNavOpen?<X size={19}/>:<Menu size={19}/>}
       </button>
       <div id="sidebar-links" className="sidebar-links">
+      <details className="sidebar-history" open={initialHistoryOpen}>
+        <summary><ChevronDown size={14} aria-hidden="true"/> Recent chats</summary>
+        <div ref={setHistoryTarget}/>
+      </details>
       <nav aria-label="Workspace">
         {navigation.map(({name, icon: Icon})=>
           <button type="button" className={'nav'+(tab===name?' active':'')} aria-current={tab===name?'page':undefined}
@@ -96,15 +102,17 @@ function App(){
             <Icon size={17} aria-hidden="true"/>{name}{name==='Approvals'&&pending.length>0&&<b>{pending.length}</b>}
           </button>
         )}
+        <button type="button" className={'nav settings-link'+(tab==='Settings'?' active':'')}
+          aria-current={tab==='Settings'?'page':undefined} onClick={()=>navigate('Settings')}>
+          <Settings2 size={17} aria-hidden="true"/>Settings
+        </button>
       </nav>
-      <details className="sidebar-history" open={initialHistoryOpen}>
-        <summary><ChevronDown size={14} aria-hidden="true"/> Recent chats</summary>
-        <div ref={setHistoryTarget}/>
-      </details>
       </div>
     </aside>
     <main id="main-content" ref={mainContent} tabIndex={-1} className={tab==='Chat'?'chat-page':'app-page'}>
       <header className="top-bar">
+        {railHidden && <button id="show-sidebar" type="button" className="icon-button rail-toggle" aria-label="Show sidebar" title="Show sidebar"
+          onClick={()=>{setRailHidden(false); requestAnimationFrame(()=>document.querySelector<HTMLButtonElement>('.brand .rail-toggle')?.focus())}}><PanelLeftOpen size={17}/></button>}
         <h1>{tab==='Browser'?'Browser inspector':tab}</h1>
         <button type="button" className="runtime-control" onClick={()=>navigate('Settings')}
           title={modelAvailable?'Model available on the local runtime':'Open model settings'}>
