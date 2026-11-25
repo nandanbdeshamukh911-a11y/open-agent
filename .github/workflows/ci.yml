@@ -29,6 +29,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: python -m pip install -r requirements.txt
       - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
       - run: python -m pytest -q
       - name: Install Chromium for browser integration tests
         if: runner.os == 'Windows'
@@ -37,5 +38,4 @@ jobs:
         if: runner.os == 'Windows'
         env:
           OPEN_AGENT_TEST_BROWSER: '1'
-        run: python -m pytest -q tests/test_browser.py tests/test_design.py
-      - run: npm --prefix frontend run build
+        run: python -m pytest -q tests/test_browser.py tests/test_design.py tests/test_frontend.py

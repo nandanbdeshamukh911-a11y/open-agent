@@ -66,7 +66,7 @@ Open Agent is distributed under the [MIT license](LICENSE).
 
 ### Appearance and task evidence
 
-Use **Appearance** in the page header to follow the system theme or save a light or dark preference in the current browser. The integrated browser keeps the previewed site's own colours.
+Use **Settings → Appearance** to follow the system theme or save a light or dark preference in the current browser. The integrated browser keeps the previewed site's own colours.
 
 In **Workspace**, select a task to inspect its latest model review, follow a citation to the recorded tool result, or filter results by tool. **Export report** downloads a JSON snapshot of the request, task status, file actions, model checks and tool results. Review the file before sharing because tool results can contain project source and command output.
 
@@ -80,4 +80,4 @@ In **Workspace**, select a task to inspect its latest model review, follow a cit
 * **Parallel verification.** Open Parallel verification on a task, discover checks, inspect the command and approve a run. A background verifier copies project sources, executes the selected check and asks a second model session to review the captured output. Its evidence applies to that copy. Dependencies, Git metadata and local environment files are excluded. Tests requiring those files can fail. Copying a changing directory is not an atomic filesystem snapshot.
 * **Permissions.** On a pending named check, choose Always allow this check here to remember the project, directory, command and lifecycle scripts. Revoke the rule in Settings. A changed recipe requires approval again. Arbitrary shell commands continue to require individual approval.
 * **Compaction.** Long task histories retain recent events, a bounded summary of earlier tool outcomes with event IDs, and earlier decisions and repair requests. The complete history remains in the task database.
-* **Images.** Attach a JPEG, PNG or WebP image with a chat message. Images are validated, resized and stored locally. The most recent image in the bounded conversation context is sent to the configured local model as a multimodal message. Use a vision-capable model for image interpretation.
+* **Images.** In the chat composer, choose **+ → Upload image** to attach a JPEG, PNG or WebP image. You can also paste an image into the message field. Images are validated, resized and stored locally. The most recent image in the bounded conversation context is sent to the configured local model as a multimodal message. Use a vision-capable model for image interpretation.

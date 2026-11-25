@@ -1,17 +1,18 @@
 .browser-panel {display:grid;gap:14px;}
 .browser-bar {display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:14px;}
 @media(max-width:640px) {.browser-bar {grid-template-columns:auto minmax(0,1fr);}}
-.browser-bar input {margin:0;}
+.browser-bar input:not([type=checkbox]), .browser-bar select, .browser-controls select {margin:0; width:auto;}
+.browser-bar input:not([type=checkbox]) {width:100%; min-width:0;}
 .browser-controls,.browser-footer {display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;}
-.browser-panel select {font:inherit;max-width:100%;border:1px solid light-dark(#dce5db,#405448);background:light-dark(#fff,#1e2923);border-radius:6px;padding:7px;color:light-dark(#26382d,#e5eee8);}
+.browser-panel select {font:inherit;max-width:100%;border:1px solid var(--line-strong);background:var(--surface);border-radius:6px;padding:7px;color:var(--ink);}
 .browser-inspector select {display:block;margin-top:8px;}
-.browser-inspector form {padding-top:12px;margin-top:12px;border-top:1px solid light-dark(#e7ebe5,#405448);}
+.browser-inspector form {padding-top:12px;margin-top:12px;border-top:1px solid var(--line);}
 .browser-content {display:grid;grid-template-columns:minmax(0,2.2fr) minmax(220px,1fr);align-items:start;gap:14px;}
 .browser-view,.browser-inspector {min-width:0;overflow:hidden;}
 .browser-location,.browser-footer,.browser-inspector {padding:14px;}
 .browser-location strong,.browser-location span {display:block;overflow-wrap:anywhere;}
-.browser-location span,.browser-footer span {font-size:12px;color:light-dark(#506b59,#e5eee8);margin-top:4px;}
-.browser-view img {display:block;width:100%;height:auto;background:light-dark(#f4f6f3,#293b30);border-block:1px solid light-dark(#e7ebe5,#405448);}
+.browser-location span,.browser-footer span {font-size:12px;color:var(--muted);margin-top:4px;}
+.browser-view img {display:block;width:100%;height:auto;background:var(--soft);border-block:1px solid var(--line);}
 .browser-view img.interactive {cursor:crosshair;}
 .browser-inspector h2 {font-size:17px;margin-bottom:10px;}
 .browser-inspector pre {max-height:270px;}

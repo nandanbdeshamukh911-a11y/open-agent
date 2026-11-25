@@ -1,19 +1,37 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { ArrowUp, Check, Copy, Globe2, MessageSquare, SquareTerminal, X } from 'lucide-react';
+import { FormEvent, KeyboardEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import AttachmentMenu, { imageTypes, PageSession } from './AttachmentMenu';
 import './chat.css';
 
-type PageSession = {id: string; title: string; url: string};
-type Message = {id: number; role: 'user' | 'assistant'; content: string; has_image?: boolean; browser_url?: string};
+const MessageBody = lazy(() => import('./MessageBody'));
+
+type Message = {id: number; role: 'user' | 'assistant'; content: string; has_image?: boolean | 0 | 1; browser_url?: string};
 type ChatSummary = {id: number; title: string; status: 'ready' | 'generating' | 'failed'; error: string};
 type Conversation = ChatSummary & {messages: Message[]};
 type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 
-export default function Chat({api, onCode}: {api: Api; onCode: (message: string) => void}) {
+type Props = {
+  api: Api;
+  onCode: (message: string) => void;
+  onFocusChat: () => void;
+  historyTarget: HTMLElement | null;
+  visible: boolean;
+};
+
+function LoadingDots() {
+  return <div className="loading-dots" role="status" aria-label="Generating reply">
+    <span aria-hidden="true"/><span aria-hidden="true"/><span aria-hidden="true"/>
+  </div>;
+}
+
+export default function Chat({api, onCode, onFocusChat, historyTarget, visible}: Props) {
   const [history, setHistory] = useState<ChatSummary[]>([]);
   const [id, setId] = useState<number | null>(null);
   const [chat, setChat] = useState<Conversation | null>(null);
   const [pages, setPages] = useState<PageSession[]>([]);
-  const [loadingImage,setLoadingImage]=useState(false);
-  const [image,setImage] = useState('');
+  const [loadingImage, setLoadingImage] = useState(false);
+  const [image, setImage] = useState<{data: string; name: string} | null>(null);
   const [pageId, setPageId] = useState('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -21,17 +39,19 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
   const [copied, setCopied] = useState<number | null>(null);
   const requestVersion = useRef(0);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const end = useRef<HTMLDivElement>(null);
+  const transcript = useRef<HTMLDivElement>(null);
   const current = chat?.id === id ? chat : null;
   const pending = current?.status === 'generating';
   const awaitingHistory = id !== null && !current;
   const lastUserMessage = current?.messages.slice().reverse().find(message => message.role === 'user');
+  const selectedPage = pages.find(page => page.id === pageId);
   const messageCount = current?.messages.length;
+  const busy = loadingImage || sending || pending || awaitingHistory;
 
   useEffect(() => {
     let active = true;
-    Promise.all([api<PageSession[]>('/browser/sessions'), api<ChatSummary[]>('/chats')])
-      .then(([available, list]) => { if (active) { setPages(available); setHistory(list); } })
+    api<ChatSummary[]>('/chats')
+      .then(list => { if (active) setHistory(list); })
       .catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
   }, [api]);
@@ -45,8 +65,12 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
         const latest = await api<Conversation>('/chats/' + id);
         if (!active) return;
         setChat(latest);
-        if (latest.status === 'generating') timer = setTimeout(load, 1200);
-        else setHistory(await api<ChatSummary[]>('/chats'));
+        if (latest.status === 'generating') {
+          timer = setTimeout(load, 1200);
+        } else {
+          const list = await api<ChatSummary[]>('/chats');
+          if (active) setHistory(list);
+        }
       } catch (err) {
         if (active) setError((err as Error).message);
       }
@@ -56,32 +80,64 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
   }, [id, api, sending]);
 
   useEffect(() => {
-    end.current?.scrollIntoView({block: 'nearest'});
-  }, [id, messageCount, pending]);
+    if (visible && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+  }, [id, messageCount, pending, visible]);
 
-  function open(next: number | null) {
+  function open(next: number) {
+    onFocusChat();
+    if (next === id) return;
     requestVersion.current += 1;
-    setId(next); setLoadingImage(false); setImage('');
+    setId(next);
+    setLoadingImage(false);
+    setImage(null);
     setInput('');
     setPageId('');
     setError('');
     setSending(false);
-    if (next === null) setChat(null);
-    composer.current?.focus();
+  }
+
+  function attachImage(file: File) {
+    if (busy) return;
+    if (!imageTypes.includes(file.type) || file.size > 3_000_000) {
+      setError('Choose a PNG, JPEG or WebP image up to 3 MB.');
+      return;
+    }
+    setError('');
+    setLoadingImage(true);
+    const version = requestVersion.current;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (requestVersion.current === version) {
+        setImage({data: String(reader.result), name: file.name});
+        composer.current?.focus();
+      }
+    };
+    reader.onerror = () => {
+      if (requestVersion.current === version) setError('Could not read the image.');
+    };
+    reader.onloadend = () => {
+      if (requestVersion.current === version) setLoadingImage(false);
+    };
+    reader.readAsDataURL(file);
   }
 
   async function send() {
-    if (!input.trim() || loadingImage || sending || pending || awaitingHistory) return;
+    if (!input.trim() || busy) return;
     const version = ++requestVersion.current;
     setSending(true);
     setError('');
     try {
       const path = id === null ? '/chats' : '/chats/' + id + '/messages';
-      const saved = await api<{id: number}>(path, 'POST', {content: input, browser_session: pageId || null, image:image || null});
+      const saved = await api<{id: number}>(path, 'POST', {
+        content: input, browser_session: pageId || null, image: image?.data || null,
+      });
       if (version === requestVersion.current) {
         setInput('');
         setPageId('');
-        setImage(''); setId(saved.id);
+        setImage(null);
+        setId(saved.id);
+        const list = await api<ChatSummary[]>('/chats').catch(() => null);
+        if (list && version === requestVersion.current) setHistory(list);
       }
     } catch (err) {
       if (version === requestVersion.current) setError((err as Error).message);
@@ -114,72 +170,84 @@ export default function Chat({api, onCode}: {api: Api; onCode: (message: string)
     }
   }
 
-  return <div className="chat-layout">
-    <section className="card chat-panel" aria-label="Conversation">
-      <div className="chat-transcript" aria-live="polite">
-        {!current && !awaitingHistory && <div className="chat-empty">
-          <h2>What can I help with?</h2>
-          <p>Ask a question, work through an idea, or discuss a page you opened in Browser.</p>
-        </div>}
-        {awaitingHistory && <p className="chat-status">Loading conversation…</p>}
-        {current?.messages.map(message => <article className={`chat-message ${message.role}`} key={message.id}>
-          <strong>{message.role === 'user' ? 'You' : 'Open Agent'}</strong>
-          <div className="chat-text">{message.content}</div>
-          {message.has_image && <img className="chat-image" loading="lazy" src={`/api/chats/${id}/messages/${message.id}/image`} alt="Attached image"/>}
-          {message.browser_url && <p className="chat-status">Browser context · {message.browser_url}</p>}
-          {message.role === 'assistant' && <button type="button" className="text-button" onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(message.content);
-              setCopied(message.id);
-            } catch {
-              setError('Clipboard unavailable. Select and copy the reply directly.');
-            }
-          }}>{copied === message.id ? 'Copied' : 'Copy'}</button>}
-        </article>)}
-        {pending && <p className="chat-status" role="status">Waiting for the local model…</p>}
-        {current?.status === 'failed' && <div className="chat-status" role="alert">
-          <p>{current.error}</p>
-          <button type="button" onClick={retry} disabled={sending}>Retry reply</button>
-        </div>}
-        <div ref={end} />
-      </div>
-      {error && <p role="alert" className="error chat-error">{error}</p>}
-      <form className="chat-compose" onSubmit={submit}>
-        <label htmlFor="chat-input">Message</label>
-        <textarea id="chat-input" ref={composer} value={input} rows={3} maxLength={12000}
-          placeholder="Message Open Agent…" onChange={event => setInput(event.target.value)} onKeyDown={handleKey} />
-        {image && <div><img className="chat-image" src={image} alt="Image ready to send"/><button type="button" onClick={()=>setImage('')}>Remove image</button></div>}
-        <div className="chat-actions"><label className="attachment-button">Attach image<input type="file" disabled={loadingImage||sending} accept="image/png,image/jpeg,image/webp" onChange={e=>{
-          const file=e.target.files?.[0]; e.target.value='';
-          if(!file) return;
-          if(file.size>3000000){setError('Choose an image under 3 MB.');return;}
-          const version=requestVersion.current;
-          setLoadingImage(true);
-          const reader=new FileReader();
-          reader.onloadend=()=>{if(requestVersion.current===version)setLoadingImage(false)};
-          reader.onload=()=>{if(requestVersion.current===version)setImage(String(reader.result));};
-          reader.onerror=()=>setError('Could not read the image.');
-          reader.readAsDataURL(file);
-        }}/></label>
-          {pages.length > 0 && <label className="chat-tool-label" htmlFor="chat-page">Attach browser context
-            <select id="chat-page" value={pageId} onChange={event => setPageId(event.target.value)}>
-              <option value="">None</option>
-              {pages.map(item => <option key={item.id} value={item.id}>{item.title || item.url}</option>)}
-            </select>
-          </label>}
-          <button className="primary" disabled={!input.trim() || loadingImage || pending || sending || awaitingHistory}>
-            Send
-          </button>
+  return <>
+    {historyTarget && createPortal(
+      history.length ? history.map(item => <button type="button" key={item.id}
+        className="conversation-item" aria-current={visible && item.id === id ? 'page' : undefined}
+        onClick={() => open(item.id)} title={item.title}>
+        <MessageSquare size={15} aria-hidden="true"/><span>{item.title}</span>
+      </button>) : <p className="conversation-empty">No saved chats</p>, historyTarget,
+    )}
+    <div className={id === null ? 'chat-panel chat-start' : 'chat-panel'} hidden={!visible}>
+      {id === null ? <section className="chat-intro">
+        <h2>What are you working on?</h2>
+        <p>Ask a question, share an image, or talk through a change before opening a coding task.</p>
+      </section> : <div className="chat-transcript" ref={transcript} aria-label="Conversation">
+        <div className="chat-thread">
+          {awaitingHistory && <p className="chat-status" role="status">Loading conversation…</p>}
+          {current?.messages.map(message => <article className={`chat-message ${message.role}`} key={message.id}>
+            <strong>{message.role === 'user' ? 'You' : 'Open Agent'}</strong>
+            {Boolean(message.has_image) && <img className="chat-image" loading="lazy" src={`/api/chats/${id}/messages/${message.id}/image`} alt="Attached image"/>}
+            {message.role === 'assistant' ? <Suspense fallback={null}>
+              <MessageBody content={message.content}/>
+            </Suspense> : <div className="chat-text">{message.content}</div>}
+            {message.browser_url && <p className="chat-status"><Globe2 size={13} aria-hidden="true"/> {message.browser_url}</p>}
+            {message.role === 'assistant' && <button type="button" className="icon-button copy-reply"
+              aria-label={copied === message.id ? 'Copied' : 'Copy reply'} title={copied === message.id ? 'Copied' : 'Copy reply'}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(message.content);
+                  setCopied(message.id);
+                } catch {
+                  setError('Clipboard unavailable. Select and copy the reply directly.');
+                }
+              }}>
+              {copied === message.id ? <Check size={16}/> : <Copy size={16}/>}
+            </button>}
+          </article>)}
+          {pending && <LoadingDots/>}
+          {current?.status === 'failed' && <div className="chat-status" role="alert">
+            <p>{current.error}</p>
+            <button type="button" onClick={retry} disabled={sending}>Retry reply</button>
+          </div>}
         </div>
-      </form>
-    </section>
-    <aside className="card chat-history">
-      <div className="chat-history-header"><h2>Conversations</h2><button type="button" onClick={() => open(null)}>New chat</button></div>
-      {history.length === 0 && <p className="chat-status">Your conversations will appear here.</p>}
-      {history.map(item => <button type="button" key={item.id} aria-pressed={item.id === id} className="chat-history-item"
-        onClick={() => open(item.id)}>{item.title}</button>)}
-      {lastUserMessage && !lastUserMessage.content.startsWith('/') && <button type="button" className="text-button"
-        onClick={() => onCode(lastUserMessage.content)}>Use last message as a coding task</button>}
-    </aside>
-  </div>;
+      </div>}
+      <div className="chat-compose-region">
+        {error && <p role="alert" className="error chat-error">{error}</p>}
+        <form className="chat-compose" aria-label="Compose message" onSubmit={submit}>
+          {(image || pageId) && <div className="composer-attachments">
+            {image && <div className="attachment-chip">
+              <img src={image.data} alt="Image ready to send"/><span title={image.name}>{image.name}</span>
+              <button type="button" className="icon-button" onClick={() => setImage(null)} aria-label="Remove image" title="Remove image"><X size={16}/></button>
+            </div>}
+            {pageId && <div className="attachment-chip">
+              <Globe2 size={16} aria-hidden="true"/><span>{selectedPage?.title || selectedPage?.url || 'Browser preview'}</span>
+              <button type="button" className="icon-button" onClick={() => setPageId('')} aria-label="Remove browser preview"><X size={16}/></button>
+            </div>}
+          </div>}
+          <textarea aria-label="Message" ref={composer} value={input} rows={2} maxLength={12000}
+            placeholder="Write a message…" onChange={event => setInput(event.target.value)} onKeyDown={handleKey}
+            onPaste={event => {
+              const file = Array.from(event.clipboardData.files).find(item => imageTypes.includes(item.type));
+              if (file && !busy) {
+                event.preventDefault();
+                attachImage(file);
+              }
+            }}/>
+          <div className="chat-actions">
+            <AttachmentMenu pages={pages} disabled={!!busy} onImage={attachImage} onPage={setPageId}
+              onOpen={() => {void api<PageSession[]>('/browser/sessions').then(setPages).catch(() => setPages([]));}}/>
+            {loadingImage && <span role="status" className="chat-status">Reading image…</span>}
+            {sending && !pending && <LoadingDots/>}
+            <button type="submit" className="icon-button send-button" aria-label="Send message" title="Send message"
+              disabled={!input.trim() || !!busy}><ArrowUp size={21} aria-hidden="true"/></button>
+          </div>
+        </form>
+        {lastUserMessage && !lastUserMessage.content.startsWith('/') && <button type="button" className="chat-handoff"
+          onClick={() => onCode(lastUserMessage.content)}>
+          <SquareTerminal size={16} aria-hidden="true"/> Use last message in a coding task
+        </button>}
+      </div>
+    </div>
+  </>;
 }

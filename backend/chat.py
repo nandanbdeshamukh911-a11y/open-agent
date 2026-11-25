@@ -163,6 +163,7 @@ def get_chat(chat_id: int):
         row = find_chat(chat_id)
         row['messages'] = store.query('SELECT id,role,content,browser_context,image IS NOT NULL AS has_image FROM chat_messages WHERE chat_id=? ORDER BY id', (chat_id,))
         for message in row['messages']:
+            message['has_image'] = bool(message['has_image'])
             context = message.pop('browser_context')
             if context:
                 message['browser_url'] = json.loads(context)['url']
