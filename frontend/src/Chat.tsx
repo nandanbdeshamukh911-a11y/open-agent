@@ -292,7 +292,7 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
       </div>
     </div>
     {visible && id !== null && latestPage && selectedPreviewId && preview &&
-      <SitePreview key={selectedPreviewId} api={api} chatId={id} messageId={selectedPreviewId}
+      <SitePreview key={selectedPreviewId} chatId={id} messageId={selectedPreviewId}
         complete={preview.complete} onClose={() => setPreviewChoice({latest: latestPage.id, chosen: null})}/>}
     </div>
   </>;

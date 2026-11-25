@@ -260,7 +260,18 @@ main { margin-left: var(--rail-width); min-width: 0; }
 
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
-  button { transition: background-color .14s, border-color .14s, color .14s; }
+  :root, .sidebar, .top-bar, .card, .chat-compose, .site-preview, button, input, select, textarea {
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  }
+  .app-page > .page-column, .app-page > .workspace, .app-page > .browser-panel, .chat-surface,
+  .site-preview, .attachment-popover, .mobile-open .sidebar-links {
+    animation: surface-in 160ms ease-out;
+  }
+  .site-preview-viewport iframe { transition: width 180ms ease-out; }
+  @keyframes surface-in { from { opacity: .6; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+}
+@media (min-width: 761px) and (prefers-reduced-motion: no-preference) {
+  main { transition: margin-left 180ms ease-out; }
 }
 @media (max-width: 1000px) {
   :root { --rail-width: 196px; }

@@ -12,45 +12,44 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  padding: 0 14px 14px;
+  padding: 0 10px 10px;
 }
-.site-preview-top, .site-preview-bar, .site-preview-actions, .preview-devices, .preview-scroll {
+.site-preview-top, .site-preview-bar, .site-preview-actions, .preview-devices {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.site-preview-top { justify-content: space-between; padding: 14px 0; }
-.site-preview-top > div:first-child { min-width: 0; }
-.site-preview-top h2 { font-size: 14px; }
-.site-preview-top span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
-.site-preview-bar { padding: 5px 0 8px; flex-wrap: wrap; border-top: 1px solid var(--line); }
+.site-preview-top { justify-content: space-between; padding: 4px 0 4px 8px; }
+.site-preview-top h2 { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.site-preview-bar { padding: 0 0 8px; }
+.preview-address { flex: 1; padding: 6px 12px; border: 1px solid var(--line); border-radius: 16px; color: var(--muted); display: flex; align-items: center; gap: 7px; font-size: 12px; }
 .preview-devices .icon-button[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); }
-.preview-scroll { margin-left: auto; }
-.preview-scroll button { min-height: 32px; font-size: 12px; }
 .preview-download { display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 .preview-download:hover { background: var(--soft); }
 .site-preview-viewport {
   display: flex;
   justify-content: center;
-  align-items: start;
-  min-height: 120px;
+  align-items: stretch;
+  min-height: 0;
   flex: 1;
-  overflow: auto;
-  padding: 9px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--soft);
 }
-.site-preview-viewport img { display: block; max-width: 100%; height: auto; border-radius: 4px; cursor: crosshair; }
+.site-preview-viewport iframe { display: block; width: 100%; min-width: 0; border: 0; background: white; color-scheme: light; }
+.site-preview-viewport iframe.preview-phone { width: min(390px, 100%); }
 .site-preview-viewport p { padding-top: 15px; font-size: 13px; }
 .preview-note, .preview-error { padding: 8px 10px; margin-bottom: 7px; border-radius: 6px; font-size: 13px; line-height: 1.45; }
 .preview-note { background: var(--warning-soft); color: var(--warning); }
+.preview-link-notice { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 8px; font-size: 13px; overflow-wrap: anywhere; }
 .preview-error { background: var(--danger-soft); color: var(--danger); }
 .preview-diagnostics { margin-top: 8px; }
 .preview-diagnostics pre { max-height: 140px; }
 @media (max-width: 1000px) {
   .chat-surface.chat-with-preview { display: flex; flex-direction: column; }
   .chat-with-preview > .chat-panel { flex: 1; }
-  .site-preview { order: -1; border-left: 0; border-bottom: 1px solid var(--line); max-height: 48dvh; }
+  .site-preview { order: -1; height: 48dvh; border-left: 0; border-bottom: 1px solid var(--line); }
   .chat-with-preview .chat-transcript { min-height: 130px; }
 }
+.site-preview:fullscreen { width: 100%; height: 100%; border: 0; }

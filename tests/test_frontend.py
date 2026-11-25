@@ -42,6 +42,7 @@ def test_chat_composer_and_transcript(app, monkeypatch):
             root = page.locator('html')
             expect(root).to_have_attribute('data-theme', 'dark')
             expect(root).to_have_css('background-color', 'rgb(32, 32, 32)')
+            expect(page.locator('.chat-surface')).to_have_css('animation-name', 'none')
             page.get_by_role('button', name='Review code', exact=True).click()
             draft = page.get_by_role('textbox', name='Message', exact=True)
             expect(draft).to_be_focused()
@@ -97,14 +98,14 @@ def test_chat_composer_and_transcript(app, monkeypatch):
 @pytest.mark.skipif(not os.environ.get('OPEN_AGENT_TEST_BROWSER'), reason='Requires installed Chromium')
 def test_generated_html_opens_automatically_beside_chat(app):
     client, _, _ = app
-    from backend import browser
     chat = client.post('/api/chats', json={'content':'Make a page','tool':'text_stats'}).json()
     assert 'id' in chat, chat
     chat_id = chat['id']
     from backend import store
     source = ('<!doctype html><html><head><title>Demo page</title></head>'
-              '<body style="margin:0"><button style="width:100vw;height:100vh" '
-              'onclick="this.textContent=\'Updated\'">Update</button>'
+              '<body><input aria-label="Name"><button onclick="this.textContent=\'Updated\'">Update</button>'
+              '<a href="#details">Details</a><div style="height:150vh"></div><h2 id="details">More information</h2>'
+              '<a href="https://example.invalid/other">Other site</a>'
               '<img src="https://example.invalid/pixel.png"></body></html>')
     message_id = store.execute("INSERT INTO chat_messages(chat_id,role,content) VALUES(?,'assistant',?)",
                                (chat_id, '\x60\x60\x60html\n'+source+'\n\x60\x60\x60'))
@@ -118,36 +119,58 @@ def test_generated_html_opens_automatically_beside_chat(app):
     with sync_playwright() as playwright:
         chromium = playwright.chromium.launch(chromium_sandbox=True)
         page = chromium.new_page(viewport={'width': 1440,'height': 900})
+        outside_requests = []
+        def reject_outside(route):
+            outside_requests.append(route.request.url)
+            route.abort()
+        page.route('https://example.invalid/**', reject_outside)
         page.route('http://127.0.0.1:8765/**', serve)
         try:
             page.goto('http://127.0.0.1:8765/')
             page.get_by_role('button', name='Make a page', exact=True).click()
             preview = page.get_by_role('region', name='Website preview')
-            image = preview.get_by_alt_text('Rendered website')
-            expect(image).to_have_js_property('naturalWidth',1120)
+            frame = preview.locator('iframe[title="Website content"]')
+            content = frame.content_frame.frame_locator('iframe[title="Generated page"]')
+            name = content.get_by_role('textbox', name='Name')
+            expect(preview.get_by_role('heading', name='Demo page')).to_be_visible()
             page.get_by_role('button', name='Hide sidebar').click()
             expect(page.locator('.sidebar')).to_be_hidden()
             page.get_by_role('button', name='Show sidebar').click()
             expect(page.get_by_role('button', name='Hide sidebar')).to_be_focused()
             assert page.locator('.chat-with-preview').evaluate('element => getComputedStyle(element).display')=='grid'
             assert page.get_by_role('navigation').get_by_role('button',name='Browser',exact=True).count()==0
-            box = image.bounding_box()
+            box = frame.bounding_box()
             assert box['x'] > page.locator('.chat-panel').bounding_box()['x']
             assert client.get(f'/api/chats/{chat_id}/preview/source/{message_id}').text==source
-            assert 'Content Security Policy' in '\n'.join(browser.service.call('state',f'chat-{chat_id}')['diagnostics'])
-            with page.expect_response(lambda response: response.url.endswith('/preview/point')):
-                image.click()
-            assert 'Updated' in browser.service.call('state',f'chat-{chat_id}')['outline']
+            name.click()
+            page.keyboard.type('Saved while resizing')
+            name.press('Tab')
+            page.keyboard.press('Enter')
+            expect(content.get_by_role('button', name='Updated')).to_be_visible()
+            frame.hover()
+            details = content.get_by_role('heading', name='More information')
+            expect(details).not_to_be_in_viewport()
+            page.mouse.wheel(0, 1000)
+            expect(details).to_be_in_viewport()
+            content.get_by_role('link', name='Details', exact=True).click()
+            assert details.evaluate('() => location.hash') == '#details'
+            expect(preview.locator('summary')).to_contain_text('Page diagnostics')
             preview.get_by_role('button',name='Phone').click()
-            expect(image).to_have_js_property('naturalWidth',390)
+            expect(frame).to_have_css('width','390px')
+            expect(name).to_have_value('Saved while resizing')
+            content.get_by_role('link', name='Other site').click()
+            expect(preview.get_by_role('link', name='Open example.invalid in a new tab')).to_have_attribute('href','https://example.invalid/other')
+            expect(name).to_have_value('Saved while resizing')
+            preview.get_by_role('button',name='Reload preview').click()
+            expect(name).to_have_value('')
+            assert not outside_requests
             page.get_by_role('textbox',name='Message',exact=True).focus()
             assert page.get_by_role('textbox',name='Message',exact=True).evaluate('e => getComputedStyle(e).outlineStyle')=='none'
             preview.get_by_role('button',name='Close preview').click()
             expect(preview).to_have_count(0)
             page.get_by_role('button',name='Preview website').click()
-            expect(image).to_have_js_property('naturalWidth',1120)
+            expect(name).to_be_visible()
             page.set_viewport_size({'width':390,'height':844})
             assert page.evaluate('document.documentElement.scrollWidth===innerWidth')
         finally:
             chromium.close()
-            browser.service.call('shutdown')
