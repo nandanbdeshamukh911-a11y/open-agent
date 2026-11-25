@@ -40,6 +40,7 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
   const requestVersion = useRef(0);
   const composer = useRef<HTMLTextAreaElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
   const current = chat?.id === id ? chat : null;
   const pending = current?.status === 'generating';
   const awaitingHistory = id !== null && !current;
@@ -80,7 +81,21 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
   }, [id, api, sending]);
 
   useEffect(() => {
-    if (visible && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+    followLatest.current = true;
+  }, [id]);
+
+  useEffect(() => {
+    const viewport = transcript.current;
+    const thread = viewport?.firstElementChild;
+    if (!visible || !viewport || !thread) return;
+    function follow() {
+      if (viewport && followLatest.current) viewport.scrollTop = viewport.scrollHeight;
+    }
+    follow();
+    // Formatted replies and images can expand after the message arrives.
+    const observer = new ResizeObserver(follow);
+    observer.observe(thread);
+    return () => observer.disconnect();
   }, [id, messageCount, pending, visible]);
 
   function open(next: number) {
@@ -132,6 +147,7 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
         content: input, browser_session: pageId || null, image: image?.data || null,
       });
       if (version === requestVersion.current) {
+        followLatest.current = true;
         setInput('');
         setPageId('');
         setImage(null);
@@ -182,7 +198,11 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
       {id === null ? <section className="chat-intro">
         <h2>What are you working on?</h2>
         <p>Ask a question, share an image, or talk through a change before opening a coding task.</p>
-      </section> : <div className="chat-transcript" ref={transcript} aria-label="Conversation">
+      </section> : <div className="chat-transcript" ref={transcript} aria-label="Conversation"
+        onScroll={event => {
+          const viewport = event.currentTarget;
+          followLatest.current = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 48;
+        }}>
         <div className="chat-thread">
           {awaitingHistory && <p className="chat-status" role="status">Loading conversation…</p>}
           {current?.messages.map(message => <article className={`chat-message ${message.role}`} key={message.id}>

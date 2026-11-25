@@ -61,6 +61,10 @@ def test_chat_composer_and_transcript(app, monkeypatch):
             expect(page.get_by_role('heading', name='Verification')).to_be_visible()
             expect(page.get_by_role('table')).to_be_visible()
             expect(page.locator('.chat-markdown pre code')).to_have_text('print("verified")')
+            page.wait_for_function("""() => {
+                const thread = document.querySelector('.chat-transcript');
+                return thread.scrollHeight - thread.clientHeight - thread.scrollTop < 2;
+            }""")
             expect(page.get_by_text('0', exact=True)).to_have_count(0)
             assert any(isinstance(message['content'], list) for message in model_input)
             assert page.evaluate('document.documentElement.scrollWidth === innerWidth')
