@@ -1,5 +1,6 @@
 .chat-page { display: flex; flex-direction: column; height: 100dvh; }
 .chat-page .top-bar { flex: none; }
+.chat-surface { min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .chat-panel { min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .chat-start { justify-content: center; padding-bottom: min(10vh, 90px); }
 .chat-intro, .chat-compose-region, .chat-thread { width: min(100% - 48px, 750px); margin-inline: auto; }
@@ -58,7 +59,7 @@
   border-radius: 19px;
   box-shadow: var(--shadow);
 }
-.chat-compose:focus-within { border-color: var(--accent); }
+.chat-compose:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
 .chat-compose textarea {
   margin: 0;
   padding: 10px;
@@ -71,7 +72,7 @@
   background: transparent;
   font-size: 15px;
 }
-.chat-compose textarea:focus-visible { outline-offset: -2px; }
+.chat-compose textarea:focus-visible { outline: none; }
 .chat-actions { display: flex; align-items: center; gap: 8px; padding: 3px 3px 1px; }
 .attachment-menu { position: relative; }
 .icon-button.attachment-trigger { border-color: var(--line); border-radius: 50%; }

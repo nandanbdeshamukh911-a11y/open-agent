@@ -18,13 +18,19 @@ CLICK_ROLES = {'button', 'link', 'tab', 'checkbox', 'radio', 'switch', 'menuitem
 ASSERT_ROLES = CLICK_ROLES | {'heading', 'textbox', 'status', 'alert', 'main', 'dialog', 'img'}
 BROWSER_ACTIONS = {'browser_open', 'browser_project', 'browser_click', 'browser_fill'}
 DOCUMENT_URL = 'https://preview.invalid/index.html'
+CHAT_DOCUMENT_POLICY = (
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+    "img-src data: blob:; media-src data: blob:; font-src data:; "
+    "form-action 'none'; base-uri 'none'; sandbox allow-scripts"
+)
 
 
 class Preview:
-    def __init__(self, browser, address, blocked_ports, viewport, document=None):
+    def __init__(self, browser, address, blocked_ports, viewport, document=None, *, chat_surface=False):
         self.context = None
         self.network = PreviewNetwork(address, blocked_ports) if document is None else None
         self.document = document
+        self.chat_surface = chat_surface
         self.logs = deque(maxlen=20)
         self.result = {}
         self.image = b''
@@ -74,6 +80,8 @@ class Preview:
                 status, headers, body = self.network.fetch(request.url, request.method, request.headers)
             elif request.url == DOCUMENT_URL and request.method == 'GET':
                 status, headers, body = 200, {'content-type':'text/html; charset=utf-8'}, self.document
+                if self.chat_surface:
+                    headers['content-security-policy'] = CHAT_DOCUMENT_POLICY
             else:
                 raise ValueError('Standalone preview includes only the approved HTML file.')
             self.remaining_bytes -= len(body)
@@ -200,8 +208,10 @@ class BrowserService:
         for expired in [name for name, preview in self.sessions.items() if now - preview.visited_at > IDLE_SECONDS]:
             self.sessions.pop(expired).close()
         if action == 'list':
-            return [{'id': name, **{field: preview.result[field] for field in ('url', 'title')}} for name, preview in self.sessions.items()]
+            return [{'id': name, **{field: preview.result[field] for field in ('url', 'title')}}
+                    for name, preview in self.sessions.items() if not name.startswith('chat-')]
         if action in ('browser_open', 'browser_project'):
+            chat_surface = key.startswith('chat-')
             address = parse_address(DOCUMENT_URL if action == 'browser_project' else args['url'])
             model = store.query("SELECT value FROM settings WHERE key='model_url'", one=True)
             blocked_ports = set()
@@ -210,11 +220,16 @@ class BrowserService:
                     blocked_ports.add(urlsplit(model['value']).port or 80)
                 except ValueError:
                     pass
-            if key not in self.sessions and len(self.sessions) >= MAX_SESSIONS:
-                raise ValueError('Close an existing browser session before opening another.')
+            if key not in self.sessions:
+                pool = [name for name in self.sessions if name.startswith('chat-') == chat_surface]
+                if chat_surface and len(pool) >= 2:
+                    oldest = min(pool, key=lambda name: self.sessions[name].visited_at)
+                    self.sessions.pop(oldest).close()
+                elif not chat_surface and len(pool) >= MAX_SESSIONS:
+                    raise ValueError('Close an existing browser session before opening another.')
             self.launch()
             document = args['document'] if action == 'browser_project' else None
-            preview = Preview(self.browser, address, blocked_ports, args.get('viewport', 'desktop'), document)
+            preview = Preview(self.browser, address, blocked_ports, args.get('viewport', 'desktop'), document, chat_surface=chat_surface)
             # A revision from a closed page must never authorize the replacement page.
             preview.revision = time.monotonic_ns() // 1_000
             preview.result['revision'] = preview.revision

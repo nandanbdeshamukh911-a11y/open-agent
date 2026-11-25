@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
-from . import worktrees, verifier, checks, integrations, agent, browser, browser_api, chat, store, tools
+from . import worktrees, verifier, checks, integrations, agent, browser, browser_api, chat, chat_preview, store, tools
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -24,6 +24,7 @@ async def lifespan(_app):
 
 app = FastAPI(title='Open Agent', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.include_router(chat.router)
+app.include_router(chat_preview.router)
 app.include_router(browser_api.router)
 
 @app.middleware('http')

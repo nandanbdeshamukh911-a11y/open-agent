@@ -187,7 +187,7 @@ main { margin-left: var(--rail-width); min-width: 0; }
 .runtime-control svg { flex: none; }
 .runtime-control .available { color: var(--accent); }
 .app-page { padding-bottom: 48px; }
-.app-page > :not(.top-bar):not(.chat-panel) { margin-inline: clamp(18px, 4vw, 48px); }
+.app-page > :not(.top-bar):not(.chat-surface) { margin-inline: clamp(18px, 4vw, 48px); }
 .page-description { margin-block: 28px 22px; color: var(--muted); font-size: 14px; }
 .card { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
 .form-card, .composer, .activity, .approval, .skill, .memory-row { padding: 20px; }
@@ -287,3 +287,5 @@ main { margin-left: var(--rail-width); min-width: 0; }
   .edit-preview-columns { grid-template-columns: 1fr; }
   .memory-row { flex-direction: column; }
 }
+
+.inspector-entry { justify-self: start; }

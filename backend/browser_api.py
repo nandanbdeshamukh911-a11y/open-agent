@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -35,7 +36,7 @@ class Scroll(BaseModel):
 
 
 def call(action, key='manual', args=None):
-    if key != 'manual' and not (key.startswith('task-') and key[5:].isascii() and key[5:].isdigit()):
+    if key != 'manual' and not re.fullmatch(r'(?:task|chat)-[0-9]+', key):
         raise HTTPException(404, 'Unknown browser session.')
     try:
         return browser.service.call(action, key, args)

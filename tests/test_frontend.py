@@ -76,3 +76,57 @@ def test_chat_composer_and_transcript(app, monkeypatch):
         finally:
             finished.set()
             browser.close()
+
+@pytest.mark.skipif(not os.environ.get('OPEN_AGENT_TEST_BROWSER'), reason='Requires installed Chromium')
+def test_generated_html_opens_automatically_beside_chat(app):
+    client, _, _ = app
+    from backend import browser
+    chat = client.post('/api/chats', json={'content':'Make a page','tool':'text_stats'}).json()
+    assert 'id' in chat, chat
+    chat_id = chat['id']
+    from backend import store
+    source = ('<!doctype html><html><head><title>Demo page</title></head>'
+              '<body style="margin:0"><button style="width:100vw;height:100vh" '
+              'onclick="this.textContent=\'Updated\'">Update</button>'
+              '<img src="https://example.invalid/pixel.png"></body></html>')
+    message_id = store.execute("INSERT INTO chat_messages(chat_id,role,content) VALUES(?,'assistant',?)",
+                               (chat_id, '\x60\x60\x60html\n'+source+'\n\x60\x60\x60'))
+
+    def serve(route):
+        request = route.request
+        response = client.request(request.method, request.url, content=request.post_data_buffer, headers=request.headers)
+        headers = {'content-type': response.headers.get('content-type', 'application/octet-stream')}
+        route.fulfill(status=response.status_code, headers=headers, body=response.content)
+
+    with sync_playwright() as playwright:
+        chromium = playwright.chromium.launch(chromium_sandbox=True)
+        page = chromium.new_page(viewport={'width': 1440,'height': 900})
+        page.route('http://127.0.0.1:8765/**', serve)
+        try:
+            page.goto('http://127.0.0.1:8765/')
+            page.get_by_role('button', name='Make a page', exact=True).click()
+            preview = page.get_by_role('region', name='Website preview')
+            image = preview.get_by_alt_text('Rendered website')
+            expect(image).to_have_js_property('naturalWidth',1120)
+            assert page.locator('.chat-with-preview').evaluate('element => getComputedStyle(element).display')=='grid'
+            assert page.get_by_role('navigation').get_by_role('button',name='Browser',exact=True).count()==0
+            box = image.bounding_box()
+            assert box['x'] > page.locator('.chat-panel').bounding_box()['x']
+            assert client.get(f'/api/chats/{chat_id}/preview/source/{message_id}').text==source
+            assert 'Content Security Policy' in '\n'.join(browser.service.call('state',f'chat-{chat_id}')['diagnostics'])
+            with page.expect_response(lambda response: response.url.endswith('/preview/point')):
+                image.click()
+            assert 'Updated' in browser.service.call('state',f'chat-{chat_id}')['outline']
+            preview.get_by_role('button',name='Phone').click()
+            expect(image).to_have_js_property('naturalWidth',390)
+            page.get_by_role('textbox',name='Message',exact=True).focus()
+            assert page.get_by_role('textbox',name='Message',exact=True).evaluate('e => getComputedStyle(e).outlineStyle')=='none'
+            preview.get_by_role('button',name='Close preview').click()
+            expect(preview).to_have_count(0)
+            page.get_by_role('button',name='Preview website').click()
+            expect(image).to_have_js_property('naturalWidth',1120)
+            page.set_viewport_size({'width':390,'height':844})
+            assert page.evaluate('document.documentElement.scrollWidth===innerWidth')
+        finally:
+            chromium.close()
+            browser.service.call('shutdown')

@@ -1,12 +1,16 @@
-import { ArrowUp, Check, Copy, Globe2, MessageSquare, SquareTerminal, X } from 'lucide-react';
+import { ArrowUp, Check, Copy, Globe2, MessageSquare, Monitor, SquareTerminal, X } from 'lucide-react';
 import { FormEvent, KeyboardEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AttachmentMenu, { imageTypes, PageSession } from './AttachmentMenu';
+import SitePreview from './SitePreview';
 import './chat.css';
 
 const MessageBody = lazy(() => import('./MessageBody'));
 
-type Message = {id: number; role: 'user' | 'assistant'; content: string; has_image?: boolean | 0 | 1; browser_url?: string};
+type Message = {
+  id: number; role: 'user' | 'assistant'; content: string;
+  has_image?: boolean | 0 | 1; browser_url?: string; html_preview?: {complete: boolean};
+};
 type ChatSummary = {id: number; title: string; status: 'ready' | 'generating' | 'failed'; error: string};
 type Conversation = ChatSummary & {messages: Message[]};
 type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
@@ -37,6 +41,7 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState<number | null>(null);
+  const [previewChoice, setPreviewChoice] = useState<{latest: number; chosen: number | null} | null>(null);
   const requestVersion = useRef(0);
   const composer = useRef<HTMLTextAreaElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
@@ -45,6 +50,9 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
   const pending = current?.status === 'generating';
   const awaitingHistory = id !== null && !current;
   const lastUserMessage = current?.messages.slice().reverse().find(message => message.role === 'user');
+  const latestPage = current?.messages.slice().reverse().find(message => message.html_preview);
+  const selectedPreviewId = latestPage && (previewChoice?.latest === latestPage.id ? previewChoice.chosen : latestPage.id);
+  const preview = current?.messages.find(message => message.id === selectedPreviewId)?.html_preview;
   const selectedPage = pages.find(page => page.id === pageId);
   const messageCount = current?.messages.length;
   const busy = loadingImage || sending || pending || awaitingHistory;
@@ -103,6 +111,7 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
     if (next === id) return;
     requestVersion.current += 1;
     setId(next);
+    setPreviewChoice(null);
     setLoadingImage(false);
     setImage(null);
     setInput('');
@@ -194,7 +203,8 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
         <MessageSquare size={15} aria-hidden="true"/><span>{item.title}</span>
       </button>) : <p className="conversation-empty">No saved chats</p>, historyTarget,
     )}
-    <div className={id === null ? 'chat-panel chat-start' : 'chat-panel'} hidden={!visible}>
+    <div className={preview ? 'chat-surface chat-with-preview' : 'chat-surface'} hidden={!visible}>
+    <div className={id === null ? 'chat-panel chat-start' : 'chat-panel'}>
       {id === null ? <section className="chat-intro">
         <h2>What are you working on?</h2>
         <p>Ask a question, share an image, or talk through a change before opening a coding task.</p>
@@ -212,6 +222,11 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
               <MessageBody content={message.content}/>
             </Suspense> : <div className="chat-text">{message.content}</div>}
             {message.browser_url && <p className="chat-status"><Globe2 size={13} aria-hidden="true"/> {message.browser_url}</p>}
+            {message.html_preview && latestPage && <button type="button" className="text-button"
+              aria-pressed={selectedPreviewId === message.id}
+              onClick={() => setPreviewChoice({latest: latestPage.id, chosen: message.id})}>
+              <Monitor size={15} aria-hidden="true"/> Preview website
+            </button>}
             {message.role === 'assistant' && <button type="button" className="icon-button copy-reply"
               aria-label={copied === message.id ? 'Copied' : 'Copy reply'} title={copied === message.id ? 'Copied' : 'Copy reply'}
               onClick={async () => {
@@ -268,6 +283,10 @@ export default function Chat({api, onCode, onFocusChat, historyTarget, visible}:
           <SquareTerminal size={16} aria-hidden="true"/> Use last message in a coding task
         </button>}
       </div>
+    </div>
+    {visible && id !== null && latestPage && selectedPreviewId && preview &&
+      <SitePreview key={selectedPreviewId} api={api} chatId={id} messageId={selectedPreviewId}
+        complete={preview.complete} onClose={() => setPreviewChoice({latest: latestPage.id, chosen: null})}/>}
     </div>
   </>;
 }
